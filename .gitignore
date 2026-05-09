@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.spec
+
+bin/
+build/
+dist/
+downloads/
+*.zip
+
+BilibiliDownloader-crash.log
+BilibiliDownloader-startup.log
+
+.venv/
+venv/
+.idea/
+.vscode/
