@@ -10,6 +10,13 @@ downloads/
 
 BilibiliDownloader-crash.log
 BilibiliDownloader-startup.log
+settings.json
+settings.tmp
+cookies.txt
+*.cookies.txt
+
+artifacts/*
+!artifacts/single-window-main.png
 
 .venv/
 venv/
