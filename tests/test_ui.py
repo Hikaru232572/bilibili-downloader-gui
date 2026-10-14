@@ -45,7 +45,8 @@ def metadata(*, with_subtitles: bool) -> dict[str, object]:
 
 class AppUiTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.app = BiliDownloaderApp()
+        self.data_directory = tempfile.TemporaryDirectory()
+        self.app = BiliDownloaderApp(data_dir=Path(self.data_directory.name))
         self.app.withdraw()
         self.app.update_idletasks()
 
@@ -53,9 +54,8 @@ class AppUiTests(unittest.TestCase):
         for child in self.app.winfo_children():
             if isinstance(child, tk.Toplevel):
                 child.destroy()
-        for callback_id in self.app.tk.splitlist(self.app.tk.call("after", "info")):
-            self.app.after_cancel(callback_id)
         self.app.destroy()
+        self.data_directory.cleanup()
 
     def pump_events(self, duration: float = 0.26) -> None:
         deadline = time.perf_counter() + duration
@@ -103,7 +103,7 @@ class AppUiTests(unittest.TestCase):
     def test_parse_button_keeps_existing_callback(self) -> None:
         self.app.fetch_button.invoke()
         self.app.update_idletasks()
-        self.assertEqual(self.app.status_var.get(), "请输入 Bilibili 视频链接或 BV 号。")
+        self.assertEqual(self.app.status_var.get(), "请输入 B站、抖音或小红书的单个作品链接或分享文案。")
         self.assertEqual(self.app.status_label.winfo_manager(), "grid")
 
     def test_parse_loading_animates_and_stops_on_success_and_failure(self) -> None:
@@ -159,6 +159,7 @@ class AppUiTests(unittest.TestCase):
     def test_long_url_view_returns_to_start_without_changing_value(self) -> None:
         long_url = "https://www.bilibili.com/video/BV1RXhk6REwc?vd_source=" + "a" * 120
         self.app.url_var.set(long_url)
+        self.app.update_idletasks()
         self.app.url_entry.icursor(tk.END)
         self.app.url_entry.xview_moveto(1)
         self.app.update_idletasks()
@@ -339,18 +340,18 @@ class AppUiTests(unittest.TestCase):
         self.app.update_idletasks()
         self.assertEqual(state["cookie_content"].winfo_manager(), "grid")
         self.assertEqual(state["browser_content"].winfo_manager(), "")
-        self.assertEqual(int(state["cookie_card"].cget("height")), 146)
+        self.assertEqual(int(state["cookie_card"].cget("height")), 184)
 
         auth_control.invoke("none")
         self.app.update_idletasks()
         self.assertEqual(state["none_content"].winfo_manager(), "grid")
         self.assertEqual(state["cookie_content"].winfo_manager(), "")
-        self.assertEqual(int(state["cookie_card"].cget("height")), 124)
+        self.assertEqual(int(state["cookie_card"].cget("height")), 162)
 
         auth_control.invoke("browser")
         self.app.update_idletasks()
         self.assertEqual(state["browser_content"].winfo_manager(), "grid")
-        self.assertEqual(int(state["cookie_card"].cget("height")), 190)
+        self.assertEqual(int(state["cookie_card"].cget("height")), 228)
         original_browser = state["browser_var"].get()
         state["browser_choice"].invoke()
         self.assertNotEqual(state["browser_var"].get(), original_browser)
@@ -507,11 +508,11 @@ class AppUiTests(unittest.TestCase):
             self.app.ffmpeg_path = Path("ffmpeg.exe")
             with (
                 patch.object(self.app, "_ensure_download_tools"),
-                patch("app.threading.Thread") as thread_type,
+                patch.object(self.app.task_service,"submit") as submit,
             ):
                 self.app.download_button.invoke()
-            thread_type.return_value.start.assert_called_once()
-            self.assertEqual(self.app.operation, "download")
+            submit.assert_called_once()
+            self.assertIsNone(self.app.operation)
             self.assertEqual(self.app.active_download_mode, "audio")
             self.assertEqual(self.app.download_state, "downloading")
             self.app._handle_download_done("下载完成。")
@@ -577,13 +578,17 @@ class AppUiTests(unittest.TestCase):
     def test_cancel_and_download_error_are_inline(self) -> None:
         self.app.parsed_url = "https://www.bilibili.com/video/BVTEST"
         self.app._handle_fetch_done(metadata(with_subtitles=False))
-        self.app.operation = "download"
-        self.app.current_process = None
+        from bili.models import TaskSpec, OutputSpec, Platform, Component
+        spec = TaskSpec(Platform.BILIBILI,"test","test","source-ref",str(Path(self.data_directory.name)),
+                        ("item",),(Component.VIDEO,))
+        self.app.task_store.submit(spec,(OutputSpec(spec.task_id,"item",Component.VIDEO,1),))
+        self.app._page_task_id = spec.task_id
         self.app._show_download_progress()
         self.app._set_busy(True, cancellable=True)
 
         self.app.cancel_button.invoke()
-        self.assertTrue(self.app.cancel_requested)
+        from bili.models import TaskState
+        self.assertEqual(self.app.task_store.task(spec.task_id).state,TaskState.CANCELLED)
         self.assertEqual(self.app.download_state_title_var.get(), "正在取消")
         self.app._handle_cancelled()
         self.assertEqual(self.app.download_result_title_var.get(), "下载已取消")

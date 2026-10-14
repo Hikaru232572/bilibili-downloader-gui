@@ -1,0 +1,63 @@
+{
+  "version": "1.1.0-rc.1",
+  "archive": "Bili-v1.1.0-rc.1-toolchain-windows-x64.zip",
+  "url": "https://github.com/Hikaru232572/bilibili-downloader-gui/releases/download/v1.1.0-rc.1/Bili-v1.1.0-rc.1-toolchain-windows-x64.zip",
+  "sha256": "538400d976fcfc3b4c7a8b5b8b0174d5748236c28e9de4626faa8174c415a86d",
+  "files": [
+    {
+      "name": "aria2c.exe",
+      "bytes": 5649408,
+      "sha256": "be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2"
+    },
+    {
+      "name": "avcodec-63.dll",
+      "bytes": 90520576,
+      "sha256": "e9126af48cd9c79371d6502779251330b266f017dd1570394fcafcd19bdc020b"
+    },
+    {
+      "name": "avdevice-63.dll",
+      "bytes": 4047872,
+      "sha256": "abf0b56b65125ef9573c39023a47648f3233748e70817f9a30e4f1b96170a42e"
+    },
+    {
+      "name": "avfilter-12.dll",
+      "bytes": 30895616,
+      "sha256": "cf3036bc5526dd7e988964fb5aede40c0559598c40068422c86db409a9f29948"
+    },
+    {
+      "name": "avformat-63.dll",
+      "bytes": 23399424,
+      "sha256": "0a35a19cd8a9d83515d9f02c5f5a5c7358d458580a659806ddedf5dc87b2743a"
+    },
+    {
+      "name": "avutil-61.dll",
+      "bytes": 3031040,
+      "sha256": "c557bc046ab56b5fe0e3f05e49a87c5d952b8d9e050fd8a639664721b74021d1"
+    },
+    {
+      "name": "ffmpeg.exe",
+      "bytes": 550912,
+      "sha256": "45932b30fa3f73fd4fd924f871dd266371e72bbb10330a5c6b19b61542816e56"
+    },
+    {
+      "name": "ffprobe.exe",
+      "bytes": 229888,
+      "sha256": "46783372bcc282a35f824e44c3ebad3d72e4250ac9ee77deebe11b1f83916d88"
+    },
+    {
+      "name": "swresample-7.dll",
+      "bytes": 738816,
+      "sha256": "67c942be567d72a88d848b47c128a998686b6e8490ef18111f6cdfafd8dbe832"
+    },
+    {
+      "name": "swscale-10.dll",
+      "bytes": 2370048,
+      "sha256": "da831ddd5f81baad416d141db3c0782dc6aa151b1e9bef30a78996ff5a44a0a9"
+    },
+    {
+      "name": "yt-dlp.exe",
+      "bytes": 17840399,
+      "sha256": "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
+    }
+  ]
+}

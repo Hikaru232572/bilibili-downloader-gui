@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -23,14 +24,16 @@ class PortablePackageTests(unittest.TestCase):
     def test_packaged_app_initializes_and_exits_cleanly(self) -> None:
         environment = os.environ.copy()
         environment["BILIBILI_DOWNLOADER_SMOKE_TEST"] = "1"
-        result = subprocess.run(
-            [str(EXE)],
-            cwd=DIST,
-            env=environment,
-            capture_output=True,
-            timeout=45,
-            check=False,
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            environment['BILI_DATA_DIR']=directory
+            result = subprocess.run(
+                [str(EXE)],
+                cwd=DIST,
+                env=environment,
+                capture_output=True,
+                timeout=45,
+                check=False,
+            )
         self.assertEqual(result.returncode, 0)
         crash_log = DIST / "BilibiliDownloader-crash.log"
         self.assertFalse(crash_log.exists(), crash_log.read_text(encoding="utf-8", errors="replace") if crash_log.exists() else "")

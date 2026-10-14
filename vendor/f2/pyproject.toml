@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "f2"
+version = "0.0.1.7"
+description = "Pinned F2 Douyin request and signing runtime subset for Bili"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["click>=8.3.3,<9", "rich>=13.9.3,<16", "httpx>=0.28.1,<0.29",
+ "httpx-socks>=0.11.0,<0.14", "ruamel.yaml>=0.18.10,<0.20", "pydantic>=2.9,<3", "gmssl>=3.2.2,<4"]
+
+[project.urls]
+Homepage = "https://github.com/Johnserf-Seed/f2"
+
+[tool.setuptools.packages.find]
+include = ["f2*"]
+
+[tool.setuptools.package-data]
+f2 = ["conf/*.yaml", "languages/*/LC_MESSAGES/*.mo"]

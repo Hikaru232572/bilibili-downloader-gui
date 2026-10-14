@@ -1,0 +1,22 @@
+{
+  "f2": {
+    "sha": "f6be8c0ffba9a127075bbeafe4838716650b6325",
+    "url": "https://github.com/Johnserf-Seed/f2",
+    "scope": "AST import closure of Douyin model, signing, endpoint and configuration runtime; config and compiled translations",
+    "patches": [
+      "Minimal library packaging metadata; unused CLI/platform modules omitted; unrelated configuration omitted"
+    ]
+  },
+  "xhs": {
+    "sha": "3261312721f0b37c705ba6515885bc7f34349f2f",
+    "url": "https://github.com/JoeanAmier/XHS-Downloader",
+    "scope": [
+      "source/expansion/converter.py",
+      "source/expansion/namespace.py",
+      "source/application/image.py"
+    ],
+    "patches": [
+      "relative Namespace import; controlled Html URL formatting shim"
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+# path: f2/exceptions/file_exceptions.py
+
+from f2.exceptions.base import F2Error
+
+
+class FileError(F2Error):
+    """基本的文件错误异常类，其他文件异常都会继承这个类（构造时不记录日志）"""
+
+    def __init__(self, message, filepath=None):
+        self.filepath = filepath
+        super().__init__(message)
+
+    def __str__(self):
+        """返回错误信息和文件路径（如果有的话）"""
+        message = super().__str__()
+        return f"{message} Filepath: {self.filepath}" if self.filepath else message
+
+
+class FileNotFound(FileError):
+    """文件不存在错误"""
+
+    def __init__(self, message=None, filepath=None):
+        super().__init__(message, filepath)
+
+
+class FilePermissionError(FileError):
+    """文件权限错误"""
+
+    def __init__(self, message, filepath=None):
+        super().__init__(message, filepath)
+
+
+class FileReadError(FileError):
+    """文件读取错误"""
+
+    def __init__(self, message, filepath=None):
+        super().__init__(message, filepath)
+
+
+class FileWriteError(FileError):
+    """文件写入错误"""
+
+    def __init__(self, message, filepath=None):
+        super().__init__(message, filepath)

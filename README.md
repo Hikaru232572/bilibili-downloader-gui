@@ -1,140 +1,40 @@
 # Bili
 
-一款简洁、温暖的 Windows Bilibili 视频与音频下载工具。
+Windows 多平台下载工具。v1.1.0-rc.1 为用户已验收基础功能的初步完成版。
 
-[![Release](https://img.shields.io/github/v/release/Hikaru232572/bilibili-downloader-gui?display_name=tag&sort=semver)](https://github.com/Hikaru232572/bilibili-downloader-gui/releases/latest)
-[![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-292825)](#系统要求)
-[![License](https://img.shields.io/github/license/Hikaru232572/bilibili-downloader-gui)](LICENSE)
+## 下载与运行
 
-![Bili 主界面](artifacts/single-window-main.png)
+前往 [v1.1.0-rc.1 Release](https://github.com/Hikaru232572/bilibili-downloader-gui/releases/tag/v1.1.0-rc.1)，下载 **Bili-v1.1.0-rc.1-windows-x64.zip**，完整解压后运行 BilibiliDownloader.exe。无需安装 Python 或下载工具。请保留同目录的 _internal 文件夹，不要只复制 EXE。Windows 10/11 x64。
 
 ## 功能
 
-- 支持完整 Bilibili 视频链接、分享文本和独立 `BV` 号。
-- 解析并展示视频封面、标题、UP 主、时长和 BV 号。
-- 按实际可用格式选择视频清晰度并保存为 MP4。
-- 单独提取 MP3 或 WAV 音频。
-- 检测视频原生字幕，并可选择嵌入最终视频。
-- 支持浏览器 Cookie、`cookies.txt` 和游客三种模式。
-- 内嵌下载进度、取消、完成和错误状态。
-- 单窗口设置页；已解析的视频可连续切换 Video / Audio 并重复下载。
-- 便携版已内置 `yt-dlp`、`aria2c`、`ffmpeg` 和 `ffprobe`。
+- 统一接受三平台链接及分享文案，B站也支持 BV 号，多作品输入先选择一个。
+- B站：视频画质、MP3/WAV、已有原生字幕。
+- 抖音：视频/音频单选或同时保存，默认保留音频编码，也可选择 MP3/WAV；静态图文。
+- 小红书：静态图文、按图选择、小图/源图预览、原尺寸查看。
+- FIFO 队列、任务页、取消/重试、成品校验与复用、同名避让。
+- 三平台独立的游客、浏览器或 Cookie 文件认证。
+- 退出/后台托管，可记住并在设置修改，真正退出后手动继续任务；整批结束尝试一次通知。
 
-## 下载与使用
+## 使用
 
-前往 [Releases](https://github.com/Hikaru232572/bilibili-downloader-gui/releases/latest)，下载：
+粘贴链接并解析，选择画质、视频/音频或图片，选择保存目录后加入队列，在任务页查看结果或重试。下载期间可继续解析其他作品。
 
-```text
-Bili-v1.0.0-windows-x64.zip
-```
+需要登录时在设置选择对应平台和认证来源。浏览器可能因加密或锁库读取失败，可改用 Netscape cookies.txt。Cookie 相当于登录凭据，请勿分享或提交 Git。配置/任务/预览默认放在 %LOCALAPPDATA%\Bili，成品在所选目录；清除认证仅解除来源引用，不删除外部文件或退出浏览器账号。
 
-解压后运行：
+## 支持边界
 
-```text
-BilibiliDownloader.exe
-```
+- **动态图文暂不支持**，识别为动态时仅保存可得静态图并提示；小红书普通视频不在本期范围。
+- 不自动采集主页、合集或收藏，仅下载有权访问的内容。
+- 优先无平台保存附加水印资源，保留原生水印，未知质量/水印不作保证。
+- 接口、权限、网络可能变化，失败保留在任务记录；B站游客在线测试曾未返回格式，复试通过。
+- 真实字幕失败后补入、通知显示/点击及独立干净机器完整验证尚未全部覆盖，本版以候选版发布。
+- 程序未商业代码签名，Windows 可能提示未知发布者，请核对 Release SHA256。
 
-无需安装 Python，也不需要单独配置下载工具。
+## 源码与许可
 
-基本流程：
+构建见 [BUILDING.md](BUILDING.md)。仅保留当前源码、必要解析子集、构建脚本、依赖锁定与回归测试，开发 PRD/探针/凭据/媒体/产物不在源码中。
 
-1. 粘贴 Bilibili 视频链接或 BV 号。
-2. 点击“解析”。
-3. 选择 Video 或 Audio。
-4. 选择视频清晰度，或选择 MP3 / WAV。
-5. 点击下载按钮。
+组合程序按 [GPL-3.0](LICENSE) 发行，保留 [原 MIT 声明](licenses/project-original-MIT.txt)。基于 [Lani27/bilibili-downloader-gui](https://github.com/Lani27/bilibili-downloader-gui) 继续开发，感谢 yt-dlp、aria2、FFmpeg、F2、XHS-Downloader。
 
-## 系统要求
-
-- Windows 10 / 11 x64
-- 可访问 Bilibili 和 GitHub 的网络环境
-- 部分高清视频、会员或登录可见内容需要有效 Cookie
-
-## Cookie 设置
-
-设置页提供三种模式：
-
-- **浏览器**：让 `yt-dlp` 读取本机浏览器配置。
-- **cookies.txt**：选择 Netscape 格式的 Cookie 文件。
-- **不使用**：以游客身份解析可访问内容。
-
-如果 Chrome / Edge 提示 Cookie 数据库无法复制，建议将登录状态导出为 `cookies.txt` 后使用文件模式：
-
-- [Chrome / Edge：Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
-- [Firefox：cookies.txt](https://addons.mozilla.org/firefox/addon/cookies-txt/)
-
-> Cookie 文件等同于登录凭据。请勿提交到 Git、上传到网盘或分享给他人。本项目已默认忽略 `settings.json`、`cookies.txt` 和本机构建目录。
-
-## 字幕说明
-
-程序只显示视频 metadata 中已经存在的原生字幕轨道，不负责翻译、语音转写或生成字幕。选择保存字幕后，现有字幕会通过 ffmpeg 嵌入最终 MP4。
-
-## 从源码运行
-
-需要：
-
-- Windows
-- Python 3.12+
-- PowerShell
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_tools.ps1
-.\launch.bat
-```
-
-`setup_tools.ps1` 会准备以下工具：
-
-- `yt-dlp.exe`
-- `aria2c.exe`
-- `ffmpeg.exe`
-- `ffprobe.exe`
-
-## 构建便携版
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\build_portable.ps1
-```
-
-输出目录：
-
-```text
-dist\BilibiliDownloader
-```
-
-## 测试
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\run_tests.ps1
-```
-
-测试包含命令构造、URL 规范化、metadata、UI 状态、Windows 原生窗口、工具检查、真实 Bilibili 解析、短媒体下载和打包程序启动。
-
-## 项目结构
-
-```text
-app.py              主界面、状态管理及下载流程
-ui_kit.py           项目内置的 Tk UI 组件
-assets/             应用图标源文件
-artifacts/          README 与验收截图
-tests/              自动化测试
-setup_tools.ps1     下载并校验 Windows 工具
-build_portable.ps1  构建便携版
-run_tests.ps1       运行完整测试
-launch.bat          从源码启动
-```
-
-## 致谢
-
-本项目基于 [Lani27/bilibili-downloader-gui](https://github.com/Lani27/bilibili-downloader-gui) 继续开发，保留其 Bilibili 下载核心，并重新设计了单窗口产品体验、UI、设置和下载状态交互。
-
-底层能力来自：
-
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-- [aria2](https://github.com/aria2/aria2)
-- [FFmpeg](https://ffmpeg.org/)
-
-## 许可
-
-项目遵循 [MIT License](LICENSE)，并保留原项目版权声明。
+第三方版本、许可和对应源码见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 licenses/。Release 同时提供源码和校验文件。FFmpeg 使用 LGPL 构建，对应源码随 Release 提供；第三方各自许可保持有效。

@@ -1,0 +1,1 @@
+WMI 1.5.1, Tim Golden. The published package declares the MIT license. The complete original wmi.py source and its copyright/license references are in wmi-1.5.1.tar.gz in the third-party source archive. Upstream: https://github.com/tjguk/wmi .

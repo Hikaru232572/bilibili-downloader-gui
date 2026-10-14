@@ -4,6 +4,8 @@ import ctypes
 import os
 import tkinter as tk
 import unittest
+import tempfile
+from pathlib import Path
 
 from app import BiliDownloaderApp, _colorref, apply_windows_titlebar
 
@@ -11,14 +13,14 @@ from app import BiliDownloaderApp, _colorref, apply_windows_titlebar
 @unittest.skipUnless(os.name == "nt", "Windows native caption test")
 class NativeWindowTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.app = BiliDownloaderApp()
+        self.data_directory = tempfile.TemporaryDirectory()
+        self.app = BiliDownloaderApp(data_dir=Path(self.data_directory.name))
         self.app.update()
 
     def tearDown(self) -> None:
         if self.app.winfo_exists():
-            for callback_id in self.app.tk.splitlist(self.app.tk.call("after", "info")):
-                self.app.after_cancel(callback_id)
             self.app.destroy()
+        self.data_directory.cleanup()
 
     @staticmethod
     def _native_handle(window: tk.Misc) -> int:

@@ -21,7 +21,6 @@ $MissingTools = $RequiredTools | Where-Object { -not (Test-Path -LiteralPath (Jo
 if ($MissingTools) {
   throw "Missing required files in bin: $($MissingTools -join ', ')"
 }
-
 & $Python -c "import PIL" 2>$null
 if ($LASTEXITCODE -ne 0) {
   throw "Pillow is not installed. Run: python -m pip install -r requirements.txt"
@@ -35,10 +34,22 @@ $PyInstallerArgs = @(
   "--clean",
   "--windowed",
   "--name", "BilibiliDownloader",
-  "--add-data", "$Bin;bin",
+  "--version-file", "$(Join-Path $Root 'version_info.txt')",
+  "--exclude-module", "vlc",
+  "--collect-data", "f2",
   "--add-data", "$(Join-Path $Root 'README.md');.",
-  "--add-data", "$(Join-Path $Root 'LICENSE');."
+  "--add-data", "$(Join-Path $Root 'LICENSE');.",
+  "--add-data", "$(Join-Path $Root 'licenses');licenses",
+  "--add-data", "$(Join-Path $Root 'THIRD_PARTY_NOTICES.md');."
 )
+$ToolManifest = Get-Content -LiteralPath (Join-Path $Root "toolchain-manifest.json") -Raw | ConvertFrom-Json
+foreach ($ToolEntry in $ToolManifest.files) {
+  $ToolFile = Join-Path $Bin $ToolEntry.name
+  if ((Get-FileHash -LiteralPath $ToolFile -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ToolEntry.sha256) {
+    throw "Tool hash mismatch: $($ToolEntry.name). Run setup_tools.ps1."
+  }
+  $PyInstallerArgs += @("--add-data", "$ToolFile;bin")
+}
 $AppIcon = Join-Path $Root "app.ico"
 if (Test-Path -LiteralPath $AppIcon) {
   $PyInstallerArgs += @("--icon", $AppIcon, "--add-data", "$AppIcon;.")
@@ -59,6 +70,10 @@ if ($PyInstallerExitCode -ne 0) {
 
 Copy-Item -LiteralPath (Join-Path $Root "README.md") -Destination (Join-Path $Root "dist\BilibiliDownloader\README.md") -Force
 Copy-Item -LiteralPath (Join-Path $Root "LICENSE") -Destination (Join-Path $Root "dist\BilibiliDownloader\LICENSE") -Force
+Copy-Item -LiteralPath (Join-Path $Root "THIRD_PARTY_NOTICES.md") -Destination (Join-Path $Root "dist\BilibiliDownloader\THIRD_PARTY_NOTICES.md") -Force
+Copy-Item -LiteralPath (Join-Path $Root "licenses") -Destination (Join-Path $Root "dist\BilibiliDownloader\licenses") -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $Root "VERSION") -Destination (Join-Path $Root "dist\BilibiliDownloader\VERSION") -Force
+Copy-Item -LiteralPath (Join-Path $Root "CHANGELOG.md") -Destination (Join-Path $Root "dist\BilibiliDownloader\CHANGELOG.md") -Force
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "dist\BilibiliDownloader\downloads") | Out-Null
 
 Write-Host "Portable build created under: $(Join-Path $Root 'dist\BilibiliDownloader')"

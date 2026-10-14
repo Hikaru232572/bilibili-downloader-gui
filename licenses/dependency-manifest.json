@@ -1,0 +1,788 @@
+{
+  "python": "3.12.10",
+  "python_ssl": "OpenSSL 3.0.16 11 Feb 2025",
+  "python_dependencies": [
+    {
+      "name": "altgraph",
+      "version": "0.17.5",
+      "license": "MIT",
+      "project_urls": [
+        "Documentation, https://altgraph.readthedocs.io/en/latest/",
+        "Issue tracker, https://github.com/ronaldoussoren/altgraph/issues",
+        "Repository, https://github.com/ronaldoussoren/altgraph"
+      ],
+      "notices": [
+        "licenses/python/altgraph/altgraph-0.17.5.dist-info/LICENSE"
+      ]
+    },
+    {
+      "name": "annotated-types",
+      "version": "0.8.0",
+      "license": "MIT",
+      "project_urls": [
+        "Homepage, https://github.com/annotated-types/annotated-types",
+        "Source, https://github.com/annotated-types/annotated-types",
+        "Changelog, https://github.com/annotated-types/annotated-types/releases"
+      ],
+      "notices": [
+        "licenses/python/annotated-types/annotated_types-0.8.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "anyio",
+      "version": "4.15.1",
+      "license": "MIT",
+      "project_urls": [
+        "Documentation, https://anyio.readthedocs.io/en/latest/",
+        "Changelog, https://anyio.readthedocs.io/en/stable/versionhistory.html",
+        "Source code, https://github.com/agronholm/anyio",
+        "Issue tracker, https://github.com/agronholm/anyio/issues"
+      ],
+      "notices": [
+        "licenses/python/anyio/anyio-4.15.1.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "browser-cookie3",
+      "version": "0.20.1",
+      "license": "lgpl",
+      "project_urls": [],
+      "notices": [
+        "licenses/python/browser-cookie3/browser_cookie3-0.20.1.dist-info/LICENSE"
+      ]
+    },
+    {
+      "name": "certifi",
+      "version": "2026.7.22",
+      "license": "MPL-2.0",
+      "project_urls": [
+        "Source, https://github.com/certifi/python-certifi"
+      ],
+      "notices": [
+        "licenses/python/certifi/certifi-2026.7.22.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "cffi",
+      "version": "2.1.1",
+      "license": "MIT-0",
+      "project_urls": [
+        "Documentation, https://cffi.readthedocs.io/",
+        "Changelog, https://cffi.readthedocs.io/en/latest/whatsnew.html",
+        "Download, https://github.com/python-cffi/cffi/releases",
+        "Contact, https://groups.google.com/forum/#!forum/python-cffi",
+        "Source Code, https://github.com/python-cffi/cffi",
+        "Issue Tracker, https://github.com/python-cffi/cffi/issues"
+      ],
+      "notices": [
+        "licenses/python/cffi/cffi-2.1.1.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "click",
+      "version": "8.5.0",
+      "license": "BSD-3-Clause",
+      "project_urls": [
+        "Changes, https://click.palletsprojects.com/page/changes/",
+        "Chat, https://discord.gg/pallets",
+        "Documentation, https://click.palletsprojects.com/",
+        "Donate, https://palletsprojects.com/donate",
+        "Source, https://github.com/pallets/click/"
+      ],
+      "notices": [
+        "licenses/python/click/click-8.5.0.dist-info/licenses/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "curl_cffi",
+      "version": "0.16.3",
+      "license": "MIT",
+      "project_urls": [
+        "repository, https://github.com/lexiforest/curl_cffi"
+      ],
+      "notices": [
+        "licenses/python/curl_cffi/curl_cffi-0.16.3.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "f2",
+      "version": "0.0.1.7",
+      "license": "Apache-2.0",
+      "project_urls": [
+        "Homepage, https://github.com/Johnserf-Seed/f2"
+      ],
+      "notices": [
+        "licenses/python/f2/f2-0.0.1.7.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "gmssl",
+      "version": "3.2.2",
+      "license": "BSD",
+      "project_urls": [],
+      "notices": []
+    },
+    {
+      "name": "h11",
+      "version": "0.16.0",
+      "license": "MIT",
+      "project_urls": [],
+      "notices": [
+        "licenses/python/h11/h11-0.16.0.dist-info/licenses/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "httpcore",
+      "version": "1.0.9",
+      "license": "BSD-3-Clause",
+      "project_urls": [
+        "Documentation, https://www.encode.io/httpcore",
+        "Homepage, https://www.encode.io/httpcore/",
+        "Source, https://github.com/encode/httpcore"
+      ],
+      "notices": [
+        "licenses/python/httpcore/httpcore-1.0.9.dist-info/licenses/LICENSE.md"
+      ]
+    },
+    {
+      "name": "httpx",
+      "version": "0.28.1",
+      "license": "BSD-3-Clause",
+      "project_urls": [
+        "Changelog, https://github.com/encode/httpx/blob/master/CHANGELOG.md",
+        "Documentation, https://www.python-httpx.org",
+        "Homepage, https://github.com/encode/httpx",
+        "Source, https://github.com/encode/httpx"
+      ],
+      "notices": [
+        "licenses/python/httpx/httpx-0.28.1.dist-info/licenses/LICENSE.md"
+      ]
+    },
+    {
+      "name": "httpx-socks",
+      "version": "0.13.1",
+      "license": "Apache-2.0",
+      "project_urls": [
+        "homepage, https://github.com/romis2012/httpx-socks",
+        "repository, https://github.com/romis2012/httpx-socks"
+      ],
+      "notices": [
+        "licenses/python/httpx-socks/httpx_socks-0.13.1.dist-info/licenses/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "idna",
+      "version": "3.20",
+      "license": "BSD-3-Clause",
+      "project_urls": [
+        "Changelog, https://github.com/kjd/idna/blob/master/HISTORY.md",
+        "Issue tracker, https://github.com/kjd/idna/issues",
+        "Source, https://github.com/kjd/idna"
+      ],
+      "notices": [
+        "licenses/python/idna/idna-3.20.dist-info/licenses/LICENSE.md"
+      ]
+    },
+    {
+      "name": "lxml",
+      "version": "6.1.3",
+      "license": "BSD-3-Clause",
+      "project_urls": [
+        "Source, https://github.com/lxml/lxml",
+        "Bug Tracker, https://bugs.launchpad.net/lxml"
+      ],
+      "notices": [
+        "licenses/python/lxml/lxml-6.1.3.dist-info/licenses/LICENSE.txt",
+        "licenses/python/lxml/lxml-6.1.3.dist-info/licenses/LICENSES.txt"
+      ]
+    },
+    {
+      "name": "lz4",
+      "version": "4.4.5",
+      "license": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "project_urls": [],
+      "notices": [
+        "licenses/python/lz4/lz4-4.4.5.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "markdown-it-py",
+      "version": "4.2.0",
+      "license": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "project_urls": [
+        "Documentation, https://markdown-it-py.readthedocs.io",
+        "Homepage, https://github.com/executablebooks/markdown-it-py"
+      ],
+      "notices": [
+        "licenses/python/markdown-it-py/markdown_it_py-4.2.0.dist-info/licenses/LICENSE",
+        "licenses/python/markdown-it-py/markdown_it_py-4.2.0.dist-info/licenses/LICENSE.markdown-it"
+      ]
+    },
+    {
+      "name": "mdurl",
+      "version": "0.1.2",
+      "license": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "project_urls": [
+        "Homepage, https://github.com/executablebooks/mdurl"
+      ],
+      "notices": [
+        "licenses/python/mdurl/mdurl-0.1.2.dist-info/LICENSE"
+      ]
+    },
+    {
+      "name": "packaging",
+      "version": "26.3",
+      "license": "Apache-2.0 OR BSD-2-Clause",
+      "project_urls": [
+        "Documentation, https://packaging.pypa.io/",
+        "Source, https://github.com/pypa/packaging"
+      ],
+      "notices": [
+        "licenses/python/packaging/packaging-26.3.dist-info/licenses/LICENSE",
+        "licenses/python/packaging/packaging-26.3.dist-info/licenses/LICENSE.APACHE",
+        "licenses/python/packaging/packaging-26.3.dist-info/licenses/LICENSE.BSD"
+      ]
+    },
+    {
+      "name": "pefile",
+      "version": "2024.8.26",
+      "license": "MIT",
+      "project_urls": [],
+      "notices": [
+        "licenses/python/pefile/pefile-2024.8.26.dist-info/LICENSE"
+      ]
+    },
+    {
+      "name": "pillow",
+      "version": "12.3.0",
+      "license": "MIT-CMU",
+      "project_urls": [
+        "Release notes, https://pillow.readthedocs.io/en/stable/releasenotes/index.html",
+        "Changelog, https://github.com/python-pillow/Pillow/releases",
+        "Documentation, https://pillow.readthedocs.io",
+        "Funding, https://tidelift.com/subscription/pkg/pypi-pillow?utm_source=pypi-pillow&utm_medium=pypi",
+        "Homepage, https://python-pillow.github.io",
+        "Mastodon, https://fosstodon.org/@pillow",
+        "Source, https://github.com/python-pillow/Pillow"
+      ],
+      "notices": [
+        "licenses/python/pillow/pillow-12.3.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pillow_heif",
+      "version": "1.5.0",
+      "license": "BSD-3-Clause",
+      "project_urls": [
+        "Documentation, https://pillow-heif.readthedocs.io",
+        "Source, https://github.com/bigcat88/pillow_heif",
+        "Changelog, https://github.com/bigcat88/pillow_heif/blob/master/CHANGELOG.md"
+      ],
+      "notices": [
+        "licenses/python/pillow_heif/pillow_heif-1.5.0.dist-info/licenses/LICENSE.txt",
+        "licenses/python/pillow_heif/pillow_heif-1.5.0.dist-info/licenses/LICENSES_bundled.txt"
+      ]
+    },
+    {
+      "name": "pycparser",
+      "version": "3.11",
+      "license": "BSD-3-Clause",
+      "project_urls": [
+        "Homepage, https://github.com/eliben/pycparser"
+      ],
+      "notices": [
+        "licenses/python/pycparser/pycparser-3.11.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pycryptodomex",
+      "version": "3.24.1",
+      "license": "BSD, Public Domain",
+      "project_urls": [
+        "Source, https://github.com/Legrandin/pycryptodome/",
+        "Changelog, https://www.pycryptodome.org/src/changelog"
+      ],
+      "notices": [
+        "licenses/python/pycryptodomex/pycryptodomex-3.24.1.dist-info/LICENSE.rst"
+      ]
+    },
+    {
+      "name": "pydantic",
+      "version": "2.14.1",
+      "license": "MIT",
+      "project_urls": [
+        "Homepage, https://github.com/pydantic/pydantic",
+        "Documentation, https://pydantic.dev/docs/validation/latest/get-started/",
+        "Funding, https://github.com/sponsors/samuelcolvin",
+        "Source, https://github.com/pydantic/pydantic",
+        "Changelog, https://pydantic.dev/docs/validation/latest/get-started/changelog/"
+      ],
+      "notices": [
+        "licenses/python/pydantic/pydantic-2.14.1.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pydantic_core",
+      "version": "2.50.1",
+      "license": "MIT",
+      "project_urls": [
+        "Funding, https://github.com/sponsors/samuelcolvin",
+        "Homepage, https://github.com/pydantic",
+        "Source, https://github.com/pydantic/pydantic/tree/main/pydantic-core"
+      ],
+      "notices": [
+        "licenses/python/pydantic_core/pydantic_core-2.50.1.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "Pygments",
+      "version": "2.21.0",
+      "license": "BSD-2-Clause",
+      "project_urls": [
+        "Homepage, https://pygments.org",
+        "Documentation, https://pygments.org/docs",
+        "Source, https://github.com/pygments/pygments",
+        "Bug Tracker, https://github.com/pygments/pygments/issues",
+        "Changelog, https://github.com/pygments/pygments/blob/master/CHANGES"
+      ],
+      "notices": [
+        "licenses/python/Pygments/pygments-2.21.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pyinstaller",
+      "version": "6.22.3",
+      "license": "GPLv2-or-later with a special exception which allows to use PyInstaller to build and distribute non-free programs (including commercial ones)",
+      "project_urls": [
+        "Homepage, https://pyinstaller.org",
+        "Documentation, https://pyinstaller.org",
+        "Source Code, https://github.com/pyinstaller/pyinstaller",
+        "Release Notes, https://pyinstaller.org/en/stable/CHANGES.html"
+      ],
+      "notices": [
+        "licenses/python/pyinstaller/pyinstaller-6.22.3.dist-info/licenses/COPYING.txt"
+      ]
+    },
+    {
+      "name": "pyinstaller-hooks-contrib",
+      "version": "2026.8",
+      "license": [
+        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: GNU General Public License v2 (GPLv2)"
+      ],
+      "project_urls": [],
+      "notices": [
+        "licenses/python/pyinstaller-hooks-contrib/pyinstaller_hooks_contrib-2026.8.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pystray",
+      "version": "0.19.5",
+      "license": "LGPLv3",
+      "project_urls": [],
+      "notices": [
+        "licenses/python/pystray/pystray-0.19.5.dist-info/COPYING",
+        "licenses/python/pystray/pystray-0.19.5.dist-info/COPYING.LGPL"
+      ]
+    },
+    {
+      "name": "python-socks",
+      "version": "3.1.1",
+      "license": "Apache-2.0",
+      "project_urls": [
+        "homepage, https://github.com/romis2012/python-socks",
+        "repository, https://github.com/romis2012/python-socks"
+      ],
+      "notices": [
+        "licenses/python/python-socks/python_socks-3.1.1.dist-info/licenses/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "pywin32",
+      "version": "312",
+      "license": "PSF",
+      "project_urls": [
+        "Homepage, https://github.com/mhammond/pywin32",
+        "Changes, https://github.com/mhammond/pywin32/blob/main/CHANGES.md",
+        "Docs, https://mhammond.github.io/pywin32/",
+        "Bugs, https://github.com/mhammond/pywin32/issues",
+        "Support Requests, https://github.com/mhammond/pywin32/discussions",
+        "Mailing List, https://mail.python.org/mailman/listinfo/python-win32"
+      ],
+      "notices": [
+        "licenses/python/pywin32/adodbapi/license.txt",
+        "licenses/python/pywin32/pythonwin/License.txt",
+        "licenses/python/pywin32/pythonwin/Scintilla-License.txt",
+        "licenses/python/pywin32/pythonwin/pywin/idle/LICENSE.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/adodbapi/license.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/com/License.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/com/win32comext/mapi/src/MAPIStubLibrary/LICENSE",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/License.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/Scintilla/License.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/pywin/idle/LICENSE.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/win32/License.txt",
+        "licenses/python/pywin32/win32/License.txt",
+        "licenses/python/pywin32/win32com/License.txt",
+        "licenses/python/pywin32/win32comext/License.txt",
+        "licenses/python/pywin32/win32comext/mapi/MAPIStubLibrary-License.txt",
+        "licenses/python/pywin32/win32comext/mapi/NOTICE.md"
+      ]
+    },
+    {
+      "name": "pywin32-ctypes",
+      "version": "0.2.3",
+      "license": "BSD-3-Clause",
+      "project_urls": [],
+      "notices": [
+        "licenses/python/pywin32-ctypes/pywin32_ctypes-0.2.3.dist-info/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "PyYAML",
+      "version": "6.0.3",
+      "license": "MIT",
+      "project_urls": [
+        "Bug Tracker, https://github.com/yaml/pyyaml/issues",
+        "CI, https://github.com/yaml/pyyaml/actions",
+        "Documentation, https://pyyaml.org/wiki/PyYAMLDocumentation",
+        "Mailing lists, http://lists.sourceforge.net/lists/listinfo/yaml-core",
+        "Source Code, https://github.com/yaml/pyyaml"
+      ],
+      "notices": [
+        "licenses/python/PyYAML/pyyaml-6.0.3.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "rich",
+      "version": "15.0.0",
+      "license": "MIT",
+      "project_urls": [
+        "Documentation, https://rich.readthedocs.io/en/latest/",
+        "Homepage, https://github.com/Textualize/rich"
+      ],
+      "notices": [
+        "licenses/python/rich/rich-15.0.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "ruamel.yaml",
+      "version": "0.19.1",
+      "license": "MIT",
+      "project_urls": [
+        "Home, https://sourceforge.net/p/ruamel-yaml/",
+        "Source, https://sourceforge.net/p/ruamel-yaml/code/ci/default/tree/",
+        "Tracker, https://sourceforge.net/p/ruamel-yaml/tickets/",
+        "Documentation, https://yaml.dev/doc/ruamel.yaml"
+      ],
+      "notices": [
+        "licenses/python/ruamel.yaml/ruamel_yaml-0.19.1.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "setuptools",
+      "version": "84.0.0",
+      "license": "MIT",
+      "project_urls": [
+        "Source, https://github.com/pypa/setuptools",
+        "Documentation, https://setuptools.pypa.io/",
+        "Changelog, https://setuptools.pypa.io/en/stable/history.html"
+      ],
+      "notices": [
+        "licenses/python/setuptools/setuptools-84.0.0.dist-info/licenses/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/autocommand-2.2.2.dist-info/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/backports.tarfile-1.2.0.dist-info/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/licenses/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/jaraco.text-4.0.0.dist-info/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/jaraco_context-6.1.0.dist-info/licenses/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/jaraco_functools-4.4.0.dist-info/licenses/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/more_itertools-10.8.0.dist-info/licenses/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/packaging-26.0.dist-info/licenses/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/packaging-26.0.dist-info/licenses/LICENSE.APACHE",
+        "licenses/python/setuptools/setuptools/_vendor/packaging-26.0.dist-info/licenses/LICENSE.BSD",
+        "licenses/python/setuptools/setuptools/_vendor/platformdirs-4.4.0.dist-info/licenses/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/tomli-2.4.0.dist-info/licenses/LICENSE",
+        "licenses/python/setuptools/setuptools/_vendor/wheel-0.46.3.dist-info/licenses/LICENSE.txt",
+        "licenses/python/setuptools/setuptools/_vendor/zipp-3.23.0.dist-info/licenses/LICENSE",
+        "licenses/python/setuptools/setuptools/config/NOTICE",
+        "licenses/python/setuptools/setuptools/config/_validate_pyproject/NOTICE"
+      ]
+    },
+    {
+      "name": "shadowcopy",
+      "version": "0.0.4",
+      "license": "MIT License",
+      "project_urls": [
+        "homepage, https://github.com/csm10495/shadowcopy",
+        "repository, https://github.com/csm10495/shadowcopy",
+        "documentation, https://csm10495.github.io/shadowcopy"
+      ],
+      "notices": [
+        "licenses/python/shadowcopy/shadowcopy-0.0.4.dist-info/LICENSE.md"
+      ]
+    },
+    {
+      "name": "six",
+      "version": "1.17.0",
+      "license": "MIT",
+      "project_urls": [],
+      "notices": [
+        "licenses/python/six/six-1.17.0.dist-info/LICENSE"
+      ]
+    },
+    {
+      "name": "sniffio",
+      "version": "1.3.1",
+      "license": "MIT OR Apache-2.0",
+      "project_urls": [
+        "Homepage, https://github.com/python-trio/sniffio",
+        "Documentation, https://sniffio.readthedocs.io/",
+        "Changelog, https://sniffio.readthedocs.io/en/latest/history.html"
+      ],
+      "notices": [
+        "licenses/python/sniffio/sniffio-1.3.1.dist-info/LICENSE",
+        "licenses/python/sniffio/sniffio-1.3.1.dist-info/LICENSE.APACHE2",
+        "licenses/python/sniffio/sniffio-1.3.1.dist-info/LICENSE.MIT"
+      ]
+    },
+    {
+      "name": "typing-inspection",
+      "version": "0.4.4",
+      "license": "MIT",
+      "project_urls": [
+        "Homepage, https://github.com/pydantic/typing-inspection",
+        "Documentation, https://pydantic.github.io/typing-inspection/dev/",
+        "Source, https://github.com/pydantic/typing-inspection",
+        "Changelog, https://github.com/pydantic/typing-inspection/blob/main/HISTORY.md"
+      ],
+      "notices": [
+        "licenses/python/typing-inspection/typing_inspection-0.4.4.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "typing_extensions",
+      "version": "4.16.0",
+      "license": "PSF-2.0",
+      "project_urls": [
+        "Bug Tracker, https://github.com/python/typing_extensions/issues",
+        "Changes, https://github.com/python/typing_extensions/blob/main/CHANGELOG.md",
+        "Documentation, https://typing-extensions.readthedocs.io/",
+        "Home, https://github.com/python/typing_extensions",
+        "Q & A, https://github.com/python/typing/discussions",
+        "Repository, https://github.com/python/typing_extensions"
+      ],
+      "notices": [
+        "licenses/python/typing_extensions/typing_extensions-4.16.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "Windows-Toasts",
+      "version": "1.3.1",
+      "license": [],
+      "project_urls": [
+        "Documentation, https://windows-toasts.readthedocs.io",
+        "Source, https://github.com/DatGuy1/Windows-Toasts"
+      ],
+      "notices": [
+        "licenses/python/Windows-Toasts/windows_toasts-1.3.1.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "winrt-runtime",
+      "version": "3.2.1",
+      "license": "MIT",
+      "project_urls": [
+        "Documentation, https://pywinrt.readthedocs.io",
+        "Repository, https://github.com/pywinrt/pywinrt",
+        "Changelog, https://github.com/pywinrt/pywinrt/blob/main/CHANGELOG.md"
+      ],
+      "notices": []
+    },
+    {
+      "name": "winrt-Windows.Data.Xml.Dom",
+      "version": "3.2.1",
+      "license": "MIT",
+      "project_urls": [
+        "Documentation, https://pywinrt.readthedocs.io",
+        "Repository, https://github.com/pywinrt/pywinrt",
+        "Changelog, https://github.com/pywinrt/pywinrt/blob/main/CHANGELOG.md"
+      ],
+      "notices": []
+    },
+    {
+      "name": "winrt-Windows.Foundation",
+      "version": "3.2.1",
+      "license": "MIT",
+      "project_urls": [
+        "Documentation, https://pywinrt.readthedocs.io",
+        "Repository, https://github.com/pywinrt/pywinrt",
+        "Changelog, https://github.com/pywinrt/pywinrt/blob/main/CHANGELOG.md"
+      ],
+      "notices": []
+    },
+    {
+      "name": "winrt-Windows.Foundation.Collections",
+      "version": "3.2.1",
+      "license": "MIT",
+      "project_urls": [
+        "Documentation, https://pywinrt.readthedocs.io",
+        "Repository, https://github.com/pywinrt/pywinrt",
+        "Changelog, https://github.com/pywinrt/pywinrt/blob/main/CHANGELOG.md"
+      ],
+      "notices": []
+    },
+    {
+      "name": "winrt-Windows.UI.Notifications",
+      "version": "3.2.1",
+      "license": "MIT",
+      "project_urls": [
+        "Documentation, https://pywinrt.readthedocs.io",
+        "Repository, https://github.com/pywinrt/pywinrt",
+        "Changelog, https://github.com/pywinrt/pywinrt/blob/main/CHANGELOG.md"
+      ],
+      "notices": []
+    },
+    {
+      "name": "WMI",
+      "version": "1.5.1",
+      "license": "http://www.opensource.org/licenses/mit-license.php",
+      "project_urls": [],
+      "notices": []
+    }
+  ],
+  "pillow_native": {
+    "pil": "12.3.0",
+    "tkinter": "8.6",
+    "freetype2": "2.14.3",
+    "littlecms2": "2.19",
+    "webp": "1.6.0",
+    "avif": "1.4.2",
+    "libjpeg_turbo": "3.1.4.1",
+    "zlib_ng": "2.3.3",
+    "jpg": "8.0",
+    "jpg_2000": "2.5.4",
+    "zlib": "1.3.1.zlib-ng",
+    "libtiff": "4.7.1"
+  },
+  "heif_native": {
+    "libheif": "1.23.1",
+    "HEIF": "x265 HEVC encoder (4.2+1-e444744)",
+    "AVIF": "",
+    "encoders": {
+      "x265": "x265 HEVC encoder (4.2+1-e444744)",
+      "mask": "mask"
+    },
+    "decoders": {
+      "libde265": "libde265 HEVC decoder, version 1.1.1"
+    }
+  },
+  "tool_files": [
+    {
+      "name": "aria2c.exe",
+      "size": 5649408,
+      "sha256": "be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2"
+    },
+    {
+      "name": "avcodec-63.dll",
+      "size": 90520576,
+      "sha256": "e9126af48cd9c79371d6502779251330b266f017dd1570394fcafcd19bdc020b"
+    },
+    {
+      "name": "avdevice-63.dll",
+      "size": 4047872,
+      "sha256": "abf0b56b65125ef9573c39023a47648f3233748e70817f9a30e4f1b96170a42e"
+    },
+    {
+      "name": "avfilter-12.dll",
+      "size": 30895616,
+      "sha256": "cf3036bc5526dd7e988964fb5aede40c0559598c40068422c86db409a9f29948"
+    },
+    {
+      "name": "avformat-63.dll",
+      "size": 23399424,
+      "sha256": "0a35a19cd8a9d83515d9f02c5f5a5c7358d458580a659806ddedf5dc87b2743a"
+    },
+    {
+      "name": "avutil-61.dll",
+      "size": 3031040,
+      "sha256": "c557bc046ab56b5fe0e3f05e49a87c5d952b8d9e050fd8a639664721b74021d1"
+    },
+    {
+      "name": "ffmpeg.exe",
+      "size": 550912,
+      "sha256": "45932b30fa3f73fd4fd924f871dd266371e72bbb10330a5c6b19b61542816e56"
+    },
+    {
+      "name": "ffprobe.exe",
+      "size": 229888,
+      "sha256": "46783372bcc282a35f824e44c3ebad3d72e4250ac9ee77deebe11b1f83916d88"
+    },
+    {
+      "name": "swresample-7.dll",
+      "size": 738816,
+      "sha256": "67c942be567d72a88d848b47c128a998686b6e8490ef18111f6cdfafd8dbe832"
+    },
+    {
+      "name": "swscale-10.dll",
+      "size": 2370048,
+      "sha256": "da831ddd5f81baad416d141db3c0782dc6aa151b1e9bef30a78996ff5a44a0a9"
+    },
+    {
+      "name": "yt-dlp.exe",
+      "size": 17840399,
+      "sha256": "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
+    }
+  ],
+  "ffmpeg_version": [
+    "ffmpeg version N-126734-ga9cbcc2bbb-20260921 Copyright (c) 2000-2026 the FFmpeg developers",
+    "built with gcc 16.2.0 (crosstool-NG 1.29.0.7_b1a94f6)",
+    "configuration: --prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-w64-mingw32- --arch=x86_64 --target-os=mingw32 --enable-version3 --disable-debug --enable-shared --disable-static --disable-w32threads --enable-pthreads --enable-iconv --enable-zlib --enable-libxml2 --enable-libvmaf --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-vulkan --enable-libdav1d --enable-libvorbis --enable-librav1e --enable-librsvg --disable-libxcb --disable-xlib --disable-libpulse --enable-gmp --enable-lzma --enable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --disable-avisynth --enable-chromaprint --disable-libdavs2 --disable-libdvdread --disable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --disable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribb24 --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-liboapv --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --disable-librubberband --enable-schannel --enable-sdl2 --enable-libsnappy --enable-libsoxr --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --disable-libdrm --enable-vaapi --disable-libvidstab --enable-libvvenc --disable-whisper --disable-libx264 --disable-libx265 --disable-libxavs2 --disable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs=-lgomp --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-w64-mingw32-gcc --cxx=x86_64-w64-mingw32-g++ --ar=x86_64-w64-mingw32-gcc-ar --ranlib=x86_64-w64-mingw32-gcc-ranlib --nm=x86_64-w64-mingw32-gcc-nm --extra-version=20260921",
+    "libavutil      61.  7.100 / 61.  7.100",
+    "libavcodec     63. 14.100 / 63. 14.100",
+    "libavformat    63.  7.100 / 63.  7.100",
+    "libavdevice    63.  2.100 / 63.  2.100",
+    "libavfilter    12.  4.100 / 12.  4.100",
+    "libswscale     10.  2.100 / 10.  2.100",
+    "libswresample   7.  3.100 /  7.  3.100",
+    "",
+    "Exiting with exit code 0"
+  ],
+  "aria2_version": [
+    "aria2 version 1.37.0",
+    "Copyright (C) 2006, 2019 Tatsuhiro Tsujikawa",
+    "",
+    "This program is free software; you can redistribute it and/or modify",
+    "it under the terms of the GNU General Public License as published by",
+    "the Free Software Foundation; either version 2 of the License, or",
+    "(at your option) any later version.",
+    "",
+    "This program is distributed in the hope that it will be useful,",
+    "but WITHOUT ANY WARRANTY; without even the implied warranty of",
+    "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the",
+    "GNU General Public License for more details.",
+    "",
+    "** Configuration **",
+    "Enabled Features: Async DNS, BitTorrent, Firefox3 Cookie, GZip, HTTPS, Message Digest, Metalink, XML-RPC, SFTP",
+    "Hash Algorithms: sha-1, sha-224, sha-256, sha-384, sha-512, md5, adler32",
+    "Libraries: zlib/1.3 expat/2.5.0 sqlite3/3.43.1 GMP/6.3.0 c-ares/1.19.1 libssh2/1.11.0",
+    "Compiler: mingw-w64 8.0.0 (alpha) / gcc 10-win32 20220113",
+    "  built by  x86_64-pc-linux-gnu",
+    "  targeting x86_64-w64-mingw32",
+    "  on        Nov 15 2023 11:17:49",
+    "System: Windows 6.2 (x86_64) (6.2)",
+    "",
+    "Report bugs to https://github.com/aria2/aria2/issues",
+    "Visit https://aria2.github.io/"
+  ],
+  "corresponding_sources": "Bili-v1.1.0-rc.1-third-party-sources.zip and its SOURCE_MANIFEST / NATIVE_SOURCE_MANIFEST / FFMPEG_DEPENDENCY_REFS",
+  "notes": [
+    "pillow-heif wheel bundled notice has old version examples; actual native versions and matching source archives are recorded here.",
+    "VLC and ffplay are not shipped; live photos are disabled.",
+    "FFmpeg core is a9cbcc2bbb9f64256834af2a22e31dd465a81f9d, version3 LGPL shared build; exact configure output is preserved."
+  ]
+}

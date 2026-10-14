@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import asyncio
 import json
 import os
 import queue
@@ -14,11 +15,32 @@ import time
 import tkinter as tk
 import urllib.request
 import webbrowser
+from urllib.parse import urlsplit
 from io import BytesIO
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox
 from typing import Any
+
+from bili.auth import AuthConfig, AuthService
+from bili.bilibili import BilibiliExecutor, DownloadTools, stop_process_tree
+from bili.models import Component, OutputSpec, Platform, TaskSpec, TaskState
+from bili.secrets import SecretVault
+from bili.storage import TaskStore
+from bili.tasks import TaskService
+from bili.task_page import TaskPage
+from bili.close_dialog import CloseDialog
+from bili.windows import NotificationService, SingleInstance, TrayService, application_data_dir
+from bili.messages import error_text
+from bili.gallery import GalleryExecutor, output_plan, protect_work
+from bili.features import LIVE_PHOTO_ENABLED
+from bili.douyin_video import DouyinVideoExecutor
+from bili.gallery_page import GalleryPage
+from bili.link_dialog import LinkDialog
+from bili.links import extract_links
+from bili.media_preview import MediaPreviewService
+from bili.parser import ParserHost
+from bili.video_page import DouyinVideoPage
 
 import ui_kit as ctk
 
@@ -32,6 +54,7 @@ except ImportError:
 
 
 APP_NAME = "Bilibili Downloader"
+APP_VERSION = "1.1.0-rc.1"
 WINDOW_TITLE = "Bili"
 APP_ICON_FILE_NAME = "app.ico"
 WINDOWS_CREATION_FLAGS = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -470,7 +493,7 @@ def build_download_command(
 
 
 class BiliDownloaderApp(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, *, data_dir: Path | None = None) -> None:
         super().__init__()
         self.title(WINDOW_TITLE)
         self.geometry("780x680")
@@ -488,11 +511,37 @@ class BiliDownloaderApp(tk.Tk):
         self.subtitle_choices: list[SubtitleChoice] = []
         self.activity_log: list[str] = []
         self.thumbnail_photo: Any = None
+        self.parsed_info: dict[str, Any] = {}
+        self._view_generation = 0
+        self._destroying = False
+        self._page_task_id: str | None = None
+        self._last_submission = None
+        self._task_progress: dict[str, dict] = {}
+        self._close_dialog = None
+        self._link_dialog = None
+        self.current_work = None
+        self._parsed_input = None
+        self.instance_gate = None
 
         self.ytdlp_path = find_tool("yt-dlp")
         self.aria2_path = find_tool("aria2c")
         self.ffmpeg_path = find_tool("ffmpeg")
         self.ffprobe_path = find_tool("ffprobe")
+
+        self.data_dir = data_dir or Path(os.environ.get("BILI_DATA_DIR") or
+                                        str(Path(os.environ.get("LOCALAPPDATA", str(app_dir()))) / "Bili"))
+        self.task_store = TaskStore(self.data_dir / "tasks.sqlite3")
+        self.vault = SecretVault(self.data_dir / "secrets")
+        self.auth_service = AuthService(self.task_store, revoked=self._auth_revoked)
+        self.parser_host = ParserHost(self.auth_service)
+        self.media_preview = MediaPreviewService(self.data_dir/'preview-cache',self.auth_service,
+                                                 self.parser_host,self.ffprobe_path)
+        self.task_service = TaskService(self.task_store, self._execute_task)
+        tray_icon = app_dir()/APP_ICON_FILE_NAME
+        if not tray_icon.is_file():
+            tray_icon = resource_dir()/APP_ICON_FILE_NAME
+        self.tray = TrayService(lambda action: self.queue.put(("windows_action",action)), tray_icon)
+        self.notifications = NotificationService(lambda: self.queue.put(("windows_action","tasks")))
 
         settings = self._load_settings()
         self.url_var = tk.StringVar()
@@ -523,10 +572,110 @@ class BiliDownloaderApp(tk.Tk):
 
         self._configure_style()
         self._build_ui()
+        bundle = Path(getattr(sys,'_MEIPASS',str(app_dir())))
+        self.gallery_page = GalleryPage(self.main_page,self.media_preview,self.download_gallery,
+                                        self._view_generation,bundle/'bin/vlc')
+        self.douyin_video_page=DouyinVideoPage(self.main_page,self.download_gallery)
+        self.task_page = TaskPage(self, self.task_service, self.task_store,
+                                  self.show_main_page, self._open_task_folder,self._task_progress)
         apply_native_window_style(self)
         self.url_var.trace_add("write", self._reset_options_on_url_change)
         self._set_busy(False)
         self.after(100, self._drain_queue)
+        self.protocol("WM_DELETE_WINDOW", self.request_close)
+
+    def _auth_revoked(self, platform, epoch):
+        if hasattr(self,'parser_host'):
+            self.parser_host.revoke(platform)
+            self.media_preview.cancel(platform=platform)
+            self.queue.put(('auth_revoked',platform))
+        if hasattr(self,"task_service"):
+            for record in self.task_store.tasks():
+                if record.spec.platform == platform and record.state in {TaskState.RUNNING,TaskState.VALIDATING}:
+                    self.task_service.cancel(record.spec.task_id)
+
+    def request_close(self):
+        behavior = self.task_store.get_preference("close_behavior","ask")
+        if behavior in {"exit","tray"}:
+            self._apply_close_choice(behavior,False)
+        elif self._close_dialog is None or not self._close_dialog.winfo_exists():
+            self._close_dialog = CloseDialog(self,self._apply_close_choice)
+            apply_native_window_style(self._close_dialog)
+
+    def _apply_close_choice(self, choice, remember):
+        if choice == "tray":
+            try:
+                self.tray.start()
+            except Exception as exc:
+                self._set_status(str(exc),error=True)
+                return
+            if remember:
+                self.task_store.set_preference("close_behavior","tray")
+            self.withdraw()
+        else:
+            if remember:
+                self.task_store.set_preference("close_behavior","exit")
+            self.destroy()
+
+    def restore_window(self, page="home"):
+        self.deiconify()
+        if page == "tasks":
+            self.show_task_page()
+        elif page == "settings":
+            self.show_settings_page()
+        else:
+            self.show_main_page()
+        self.lift()
+        self.focus_force()
+
+    async def _execute_task(self, context):
+        if context.record.spec.platform != Platform.BILIBILI:
+            executor_type=DouyinVideoExecutor if any(component in context.record.spec.components
+                          for component in (Component.VIDEO,Component.AUDIO)) else GalleryExecutor
+            kwargs={'ffmpeg':self.ffmpeg_path} if executor_type==DouyinVideoExecutor else {}
+            executor = executor_type(self.task_store,self.vault,self.auth_service,self.parser_host,
+                                     ffprobe=self.ffprobe_path,**kwargs)
+            return await executor(context)
+        tools = DownloadTools(self.ytdlp_path, self.aria2_path, self.ffmpeg_path, self.ffprobe_path)
+        executor = BilibiliExecutor(self.task_store, self.vault, self.auth_service, tools,
+                                    self._build_task_command)
+        return await executor(context)
+
+    @staticmethod
+    def _build_task_command(spec, tools, auth_args, directory, url):
+        return build_download_command(ytdlp_path=tools.ytdlp, aria2_path=tools.aria2,
+            ffmpeg_path=tools.ffmpeg, auth_args=auth_args, output_dir=directory, url=url,
+            mode="audio" if Component.AUDIO in spec.components else "video",
+            selected_format=FormatChoice("任务所选画质", "task", spec.format_selector or "bv*+ba/b"),
+            audio_format=spec.audio_format or "mp3", embed_subtitles=bool(spec.subtitle_language),
+            has_subtitles=bool(spec.subtitle_language))
+
+    def destroy(self):
+        if self._destroying:
+            return
+        self._destroying = True
+        try:
+            if self.current_process is not None:
+                stop_process_tree(self.current_process)
+            self.parser_host.close()
+            self.gallery_page.reset()
+            self.media_preview.close()
+            widgets = []
+            def collect(widget):
+                widgets.append(widget)
+                for child in widget.winfo_children():
+                    collect(child)
+            collect(self)
+            for callback in self.tk.splitlist(self.tk.call("after", "info")):
+                script = self.tk.call("after", "info", callback)[0]
+                command = self.tk.splitlist(script)[0]
+                owner = next((w for w in widgets if command in (w._tclCommands or [])), self)
+                owner.after_cancel(callback)
+            self.task_service.close()
+            self.tray.stop()
+            self.task_store.close()
+        finally:
+            super().destroy()
 
     def _configure_style(self) -> None:
         ctk.set_appearance_mode("light")
@@ -568,12 +717,16 @@ class BiliDownloaderApp(tk.Tk):
             command=self.show_settings_page,
         )
         self.settings_button.grid(row=0, column=1, rowspan=2, sticky=tk.E)
+        self.tasks_button = ctk.RoundedButton(header, text="任务", width=70, height=36,
+            corner_radius=18, fg_color="#EFEEEA", hover_color="#E3E1DB", text_color="#292825",
+            bg_color="#F6F5F1", command=self.show_task_page)
+        self.tasks_button.grid(row=0, column=2, rowspan=2, sticky=tk.E, padx=(10,0))
 
         self.url_bar = ctk.URLInputBar(
             outer,
             variable=self.url_var,
             command=self.fetch_options,
-            placeholder="粘贴 Bilibili 视频链接或 BV 号…",
+            placeholder="粘贴 B站、抖音、小红书链接或分享文案…",
             height=56,
             corner_radius=18,
             fill="#FFFFFF",
@@ -601,13 +754,13 @@ class BiliDownloaderApp(tk.Tk):
         ctk.VideoEmptyIcon(self.empty_state, bg="#F6F5F1").grid(row=0, column=0)
         ctk.CTkLabel(
             self.empty_state,
-            text="把一个 Bilibili 视频放进来",
+            text="把一个作品放进来",
             font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
             text_color="#201F1C",
         ).grid(row=1, column=0, pady=(18, 0))
         ctk.CTkLabel(
             self.empty_state,
-            text="解析后可以选择视频画质或仅提取音频",
+            text="支持 B站视频、抖音视频与图文、小红书图文",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             text_color="#706D67",
         ).grid(row=2, column=0, pady=(7, 0))
@@ -901,11 +1054,16 @@ class BiliDownloaderApp(tk.Tk):
         self._build_settings_page()
 
     def _settings_path(self) -> Path:
-        return app_dir() / SETTINGS_FILE_NAME
+        return self.data_dir / SETTINGS_FILE_NAME
 
     def _load_settings(self) -> dict[str, Any]:
         try:
-            data = json.loads(self._settings_path().read_text(encoding="utf-8"))
+            path = self._settings_path()
+            if not path.exists():
+                legacy = app_dir()/SETTINGS_FILE_NAME
+                if legacy.exists() and legacy != path:
+                    path = legacy
+            data = json.loads(path.read_text(encoding="utf-8"))
             return data if isinstance(data, dict) else {}
         except (OSError, ValueError):
             return {}
@@ -922,6 +1080,7 @@ class BiliDownloaderApp(tk.Tk):
         temporary = target.with_suffix(".tmp")
         temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         temporary.replace(target)
+        self._sync_bilibili_auth()
 
     def _build_settings_page(self) -> None:
         self.settings_page = ctk.CTkFrame(self, fg_color="#F6F5F1")
@@ -935,6 +1094,22 @@ class BiliDownloaderApp(tk.Tk):
         cookie_name_var = tk.StringVar()
         cookie_detail_var = tk.StringVar()
         settings_error_var = tk.StringVar()
+        close_var = tk.StringVar(value=self.task_store.get_preference("close_behavior","ask"))
+        platform_var = tk.StringVar(value=Platform.BILIBILI.value)
+        drafts = {platform:self.auth_service.config(platform) for platform in Platform}
+        active_platform = [Platform.BILIBILI]
+        def capture_auth():
+            return AuthConfig('guest' if auth_var.get()=='none' else auth_var.get(),browser_var.get(),
+                              profile_var.get().strip(),cookie_var.get().strip())
+        drafts[Platform.BILIBILI] = capture_auth()
+        def load_auth(config):
+            auth_var.set('none' if config.mode=='guest' else config.mode)
+            browser_var.set(config.browser);profile_var.set(config.profile);cookie_var.set(config.cookie_path)
+        def switch_platform(*_args):
+            drafts[active_platform[0]] = capture_auth()
+            active_platform[0] = Platform(platform_var.get())
+            load_auth(drafts[active_platform[0]])
+        platform_var.trace_add('write',switch_platform)
 
         content = ctk.CTkFrame(self.settings_page, fg_color="#F6F5F1")
         content.pack(fill=tk.BOTH, expand=True, padx=92, pady=20)
@@ -966,7 +1141,7 @@ class BiliDownloaderApp(tk.Tk):
         ).grid(row=0, column=1, sticky=tk.W)
         ctk.CTkLabel(
             header,
-            text="Download & Login Preferences",
+            text=f"Download & Login Preferences · v{APP_VERSION}",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             text_color="#706D67",
             anchor="w",
@@ -1037,13 +1212,17 @@ class BiliDownloaderApp(tk.Tk):
         cookie_card.grid(row=2, column=0, sticky=tk.EW, pady=(12, 0))
         cookie_inner = cookie_card.content
         cookie_inner.columnconfigure(0, weight=1)
+        platform_control = ctk.SegmentedControl(cookie_inner,
+            options=[('B站','bilibili'),('抖音','douyin'),('小红书','xiaohongshu')],
+            variable=platform_var,bg_color='#EFEEEA')
+        platform_control.grid(row=0,column=0,sticky=tk.EW,pady=(0,8))
         ctk.CTkLabel(
             cookie_inner,
             text="Cookie",
             font=ctk.CTkFont(family="Segoe UI Semibold", size=10),
             text_color="#201F1C",
             anchor="w",
-        ).grid(row=0, column=0, sticky=tk.W)
+        ).grid(row=1, column=0, sticky=tk.W)
 
         browser_content = ctk.CTkFrame(cookie_inner, fg_color="transparent")
         browser_content.columnconfigure(0, weight=1)
@@ -1114,14 +1293,14 @@ class BiliDownloaderApp(tk.Tk):
             none_content.grid_remove()
             mode = auth_var.get()
             if mode == "browser":
-                cookie_card.configure(height=190)
-                browser_content.grid(row=2, column=0, sticky=tk.EW, pady=(8, 0))
+                cookie_card.configure(height=228)
+                browser_content.grid(row=3, column=0, sticky=tk.EW, pady=(8, 0))
             elif mode == "cookie_file":
-                cookie_card.configure(height=146)
-                cookie_content.grid(row=2, column=0, sticky=tk.EW, pady=(8, 0))
+                cookie_card.configure(height=184)
+                cookie_content.grid(row=3, column=0, sticky=tk.EW, pady=(8, 0))
             else:
-                cookie_card.configure(height=124)
-                none_content.grid(row=2, column=0, sticky=tk.EW, pady=(8, 0))
+                cookie_card.configure(height=162)
+                none_content.grid(row=3, column=0, sticky=tk.EW, pady=(8, 0))
             settings_error_var.set("")
 
         auth_var.trace_add("write", update_auth_widgets)
@@ -1132,7 +1311,7 @@ class BiliDownloaderApp(tk.Tk):
             command=update_auth_widgets,
             bg_color="#EFEEEA",
         )
-        auth_control.grid(row=1, column=0, sticky=tk.EW, pady=(6, 0))
+        auth_control.grid(row=2, column=0, sticky=tk.EW, pady=(6, 0))
         update_auth_widgets()
 
         help_row = ctk.CTkFrame(content, fg_color="transparent")
@@ -1170,6 +1349,12 @@ class BiliDownloaderApp(tk.Tk):
 
         chrome_help = make_help_link("Chrome / Edge", CHROME_COOKIE_EXTENSION_URL, 0)
         firefox_help = make_help_link("Firefox", FIREFOX_COOKIE_EXTENSION_URL, 1)
+        def clear_auth():
+            load_auth(AuthConfig())
+            settings_error_var.set('保存后清除此平台的认证引用；外部 Cookie 文件和浏览器登录状态保留。')
+        clear_button = tk.Button(help_row,text='清除此平台认证',command=clear_auth,bg='#F6F5F1',
+                                 fg='#706D67',relief='flat',cursor='hand2',font=('Segoe UI',9))
+        clear_button.grid(row=1,column=2,sticky=tk.W,pady=(3,0))
         settings_doodles = ctk.PaperDoodles(help_row, variant="settings", bg="#F6F5F1")
         settings_doodles.grid(row=0, column=3, rowspan=2, sticky=tk.E)
 
@@ -1186,11 +1371,18 @@ class BiliDownloaderApp(tk.Tk):
         ).grid(row=0, column=0, sticky=tk.W)
         actions = ctk.CTkFrame(footer, fg_color="transparent")
         actions.grid(row=0, column=1, sticky=tk.E)
+        close_row = ctk.CTkFrame(footer,fg_color="transparent")
+        close_row.grid(row=1,column=0,columnspan=2,sticky=tk.EW,pady=(12,0))
+        ctk.CTkLabel(close_row,text="关闭窗口",font=("Segoe UI",10)).pack(side=tk.LEFT,padx=(0,10))
+        close_control = ctk.SegmentedControl(close_row,
+            options=[("每次询问","ask"),("直接退出","exit"),("后台托管","tray")],
+            variable=close_var,bg_color="#F6F5F1")
+        close_control.pack(side=tk.LEFT,fill=tk.X,expand=True)
 
         def save() -> None:
-            if auth_var.get() == "cookie_file":
-                cookie_path = cookie_var.get().strip()
-                if not cookie_path or not Path(cookie_path).exists():
+            drafts[active_platform[0]] = capture_auth()
+            for platform, config in drafts.items():
+                if config.mode=='cookie_file' and (not config.cookie_path or not Path(config.cookie_path).is_file()):
                     settings_error_var.set("请选择有效的 cookies.txt 文件。")
                     return
             old_auth = (
@@ -1200,12 +1392,16 @@ class BiliDownloaderApp(tk.Tk):
                 self.cookie_path_var.get(),
             )
             self.output_dir_var.set(output_var.get().strip() or str(app_dir() / "downloads"))
-            self.auth_mode_var.set(auth_var.get())
-            self.browser_var.set(browser_var.get())
-            self.browser_profile_var.set(profile_var.get().strip())
-            self.cookie_path_var.set(cookie_var.get().strip())
+            bili_auth = drafts[Platform.BILIBILI]
+            self.auth_mode_var.set('none' if bili_auth.mode=='guest' else bili_auth.mode)
+            self.browser_var.set(bili_auth.browser)
+            self.browser_profile_var.set(bili_auth.profile)
+            self.cookie_path_var.set(bili_auth.cookie_path)
             try:
                 self._save_settings()
+                self.task_store.set_preference("close_behavior",close_var.get())
+                for platform,config in drafts.items():
+                    if config != self.auth_service.config(platform):self.auth_service.configure(platform,config)
             except OSError as exc:
                 settings_error_var.set(f"设置保存失败：{exc}")
                 return
@@ -1215,7 +1411,7 @@ class BiliDownloaderApp(tk.Tk):
                 self.browser_profile_var.get(),
                 self.cookie_path_var.get(),
             )
-            if self.options_loaded and old_auth != new_auth:
+            if self.options_loaded and self.current_work is None and old_auth != new_auth:
                 self.options_loaded = False
                 self.parsed_url = ""
                 self.format_choices = []
@@ -1257,6 +1453,8 @@ class BiliDownloaderApp(tk.Tk):
         save_button.grid(row=0, column=1, padx=(10, 0))
 
         self.settings_state = {
+            'platform_var':platform_var,'drafts':drafts,'active_platform':active_platform,
+            'platform_control':platform_control,'clear_button':clear_button,
             "output_var": output_var,
             "auth_var": auth_var,
             "browser_var": browser_var,
@@ -1277,16 +1475,22 @@ class BiliDownloaderApp(tk.Tk):
             "chrome_help": chrome_help,
             "firefox_help": firefox_help,
             "settings_doodles": settings_doodles,
+            "close_var": close_var,
+            "close_control": close_control,
         }
 
     def _reset_settings_drafts(self) -> None:
         state = self.settings_state
+        state['drafts'].update({platform:self.auth_service.config(platform) for platform in Platform})
+        state['active_platform'][0] = Platform.BILIBILI
+        state['platform_var'].set('bilibili')
         state["output_var"].set(self.output_dir_var.get())
         state["auth_var"].set(self.auth_mode_var.get())
         state["browser_var"].set(self.browser_var.get())
         state["profile_var"].set(self.browser_profile_var.get())
         state["cookie_var"].set(self.cookie_path_var.get())
         state["error_var"].set("")
+        state["close_var"].set(self.task_store.get_preference("close_behavior","ask"))
 
     @staticmethod
     def _smoothstep(value: float) -> float:
@@ -1378,6 +1582,7 @@ class BiliDownloaderApp(tk.Tk):
             return
         self._reset_settings_drafts()
         self.main_page.pack_forget()
+        self.task_page.pack_forget()
         self.settings_page.pack(fill=tk.BOTH, expand=True)
         self.settings_page.tkraise()
 
@@ -1385,8 +1590,27 @@ class BiliDownloaderApp(tk.Tk):
         if self.main_page.winfo_manager():
             return
         self.settings_page.pack_forget()
+        self.task_page.pack_forget()
         self.main_page.pack(fill=tk.BOTH, expand=True, padx=42, pady=34)
         self.main_page.tkraise()
+
+    def show_task_page(self):
+        self.main_page.pack_forget()
+        self.settings_page.pack_forget()
+        self.task_page.refresh()
+        self.task_page.pack(fill=tk.BOTH, expand=True)
+
+    def _open_task_folder(self, directory):
+        path = Path(directory)
+        try:
+            if os.name == "nt":
+                os.startfile(str(path))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open",str(path)])
+            else:
+                subprocess.Popen(["xdg-open",str(path)])
+        except OSError:
+            self.task_page.message.set("无法打开该保存目录，请检查目录是否仍可访问。")
 
     def _set_status(self, message: str, error: bool = False) -> None:
         self.status_var.set(message)
@@ -1407,9 +1631,19 @@ class BiliDownloaderApp(tk.Tk):
     def _reset_options_on_url_change(self, *_args: object) -> None:
         if not hasattr(self, "preview_card") or self.operation:
             return
-        if normalize_url(self.url_var.get()) == self.parsed_url:
+        if self._parsed_input == self.url_var.get() or normalize_url(self.url_var.get()) == self.parsed_url:
             return
         self._cancel_preview_result_animation()
+        self._view_generation += 1
+        self._page_task_id = None
+        self.parsed_info = {}
+        self.current_work = None
+        self._parsed_input = None
+        if hasattr(self,'gallery_page'):
+            self.gallery_page.reset()
+            self.gallery_page.grid_remove()
+            self.douyin_video_page.work=None
+            self.douyin_video_page.grid_remove()
         self.options_loaded = False
         self.parsed_url = ""
         self.format_choices = []
@@ -1607,6 +1841,9 @@ class BiliDownloaderApp(tk.Tk):
         self.fetch_button.configure(state=normal_state)
         self.settings_button.configure(state=normal_state)
         self.download_button.configure(state="normal" if self.options_loaded and not busy else "disabled")
+        if hasattr(self,'gallery_page'):
+            self.gallery_page.set_busy(busy)
+            self.douyin_video_page.set_busy(busy)
         if cancellable:
             self.progress_frame.grid()
             self.cancel_button.configure(state="normal")
@@ -1677,12 +1914,39 @@ class BiliDownloaderApp(tk.Tk):
 
     def _drain_queue(self) -> None:
         try:
-            while True:
+            for _ in range(100):
                 kind, payload = self.queue.get_nowait()
                 if kind == "log":
                     self._log(str(payload))
                 elif kind == "fetch_done":
                     self._handle_fetch_done(payload)
+                elif kind == "windows_action":
+                    if payload == "exit":
+                        self.destroy()
+                        return
+                    self.restore_window(payload)
+                elif kind == "fetch_result":
+                    generation, info = payload
+                    if generation == self._view_generation:
+                        self._handle_fetch_done(info)
+                elif kind == "fetch_error":
+                    generation, error = payload
+                    if generation == self._view_generation:
+                        self._handle_error(error)
+                elif kind == 'work_result':
+                    generation, source, work = payload
+                    if generation == self._view_generation:
+                        self._handle_work_done(source,work)
+                elif kind == 'auth_revoked':
+                    if self.current_work and self.current_work.platform == payload:
+                        self.gallery_page.reset()
+                        self.gallery_page.grid_remove()
+                        self.douyin_video_page.work=None
+                        self.douyin_video_page.grid_remove()
+                        self.current_work = None
+                        self.options_loaded = False
+                        self._set_status('认证已更改，请重新解析该平台作品。')
+                    self.media_preview.revoke(payload)
                 elif kind == "thumbnail_done":
                     self._handle_thumbnail_done(payload)
                 elif kind == "thumbnail_error":
@@ -1699,15 +1963,93 @@ class BiliDownloaderApp(tk.Tk):
                     self._handle_error(str(payload))
         except queue.Empty:
             pass
+        try:
+            for _ in range(100):self.gallery_page.handle(self.media_preview.events.get_nowait())
+        except queue.Empty:pass
+        try:
+            for _ in range(100):
+                self._handle_task_event(self.task_service.events.get_nowait())
+        except queue.Empty:
+            pass
+        if self.instance_gate and self.instance_gate.activation_pending():
+            self.restore_window()
         self.after(100, self._drain_queue)
+
+    def _handle_task_event(self, event):
+        if event["operation"] == "batch_finished":
+            self.task_page.refresh()
+            self.notifications.show(event)
+            return
+        task_id = event.get("task_id")
+        if not task_id:
+            return
+        record = self.task_store.task(task_id)
+        if event.get("attempt_id") and event["attempt_id"] != record.attempt_id:
+            return
+        operation = event["operation"]
+        if operation=="task_started":
+            self._task_progress[task_id] = {"attempt_id":record.attempt_id,"percent":None,"phase":"downloading"}
+        elif operation in {"progress","phase"}:
+            progress = self._task_progress.setdefault(task_id,{"attempt_id":record.attempt_id})
+            if operation=="progress":
+                progress["percent"] = event["percent"]
+            else:
+                progress["phase"] = event["phase"]
+        self.task_page.refresh()
+        if task_id != self._page_task_id:
+            return
+        if self.current_work:
+            page=self.gallery_page if self.current_work.content_type=='gallery' else self.douyin_video_page
+            page.task_state(record,self._task_progress.get(task_id))
+            return
+        if operation == "task_started":
+            self.active_output_dir = Path(record.spec.output_dir)
+            self._show_download_progress()
+            self.cancel_button.configure(state="normal")
+            self.download_state_title_var.set("正在下载")
+            self.download_state_detail_var.set(record.spec.title)
+            self._set_busy(self.operation == "analysis")
+            self.cancel_button.configure(state="normal")
+            self.download_percent_var.set("正在连接")
+            self.progress.configure(mode="indeterminate")
+            self.progress.start(12)
+        elif operation == "progress":
+            self._handle_progress(event["percent"])
+        elif operation == "phase":
+            self.download_state_title_var.set({"downloading":"正在下载","processing":"正在处理",
+                                               "validating":"正在校验文件"}[event["phase"]])
+            if event["phase"] in {"processing","validating"}:
+                self.download_percent_var.set("处理中" if event["phase"] == "processing" else "校验中")
+                self.progress.configure(mode="indeterminate")
+                self.progress.start(12)
+        elif operation == "task_finished":
+            if record.state == TaskState.SUCCEEDED:
+                self._handle_download_done("下载完成。")
+            elif record.state == TaskState.CANCELLED:
+                self._handle_cancelled()
+            elif record.state == TaskState.PARTIAL:
+                self._show_download_result("error", "部分成功", record.message or "已保存可用文件，请在任务页查看未完成部分。")
+            else:
+                self._show_download_result("error", "下载失败", error_text(record.error_code))
+            self._set_busy(self.operation == "analysis")
 
     def fetch_options(self) -> None:
         if self.operation is not None:
             return
+        links = extract_links(self.url_var.get())
+        if not links:
+            self._set_status('请输入 B站、抖音或小红书的单个作品链接或分享文案。',error=True)
+            return
+        if len(links)>1:
+            if self._link_dialog is None or not self._link_dialog.winfo_exists():
+                self._link_dialog = LinkDialog(self,links,self._fetch_link)
+                apply_native_window_style(self._link_dialog)
+            return
+        self._fetch_link(links[0])
+
+    def _fetch_link(self,link) -> None:
         try:
-            url = normalize_url(self.url_var.get())
-            if not url:
-                raise ValueError("请输入 Bilibili 视频链接或 BV 号。")
+            url = link.url
             command = self._base_ytdlp_command() + [
                 "--dump-single-json",
                 "--skip-download",
@@ -1717,28 +2059,104 @@ class BiliDownloaderApp(tk.Tk):
                 "--no-playlist",
                 *self._auth_args(),
                 url,
-            ]
+            ] if link.platform == Platform.BILIBILI else None
         except Exception as exc:
             self._set_status(str(exc), error=True)
             return
 
         self.operation = "analysis"
+        self._view_generation += 1
+        self._page_task_id = None
         self.options_loaded = False
+        self.current_work = None
+        self._parsed_input = self.url_var.get()
+        self.gallery_page.reset()
+        self.gallery_page.grid_remove()
+        self.douyin_video_page.grid_remove()
+        self.douyin_video_page.work=None
         self.parsed_url = url
         self._cancel_preview_result_animation()
         self.preview_card.grid_remove()
         self.progress_frame.grid_remove()
         self.empty_state.grid_remove()
-        self._set_status("正在解析视频…")
-        self._log("Fetching metadata with yt-dlp.")
+        self._set_status("正在解析作品…")
         self._set_busy(True)
         self._start_parse_loading()
-        threading.Thread(target=self._run_fetch, args=(command,), daemon=True).start()
+        if command is not None:
+            threading.Thread(target=self._run_fetch,args=(command,self._view_generation),daemon=True).start()
+        else:
+            threading.Thread(target=self._run_platform_fetch,args=(link,self._view_generation),daemon=True).start()
 
-    def _run_fetch(self, command: list[str]) -> None:
+    def _run_platform_fetch(self,link,generation):
         try:
+            source,work = asyncio.run(self.parser_host.parse(link,view_generation=generation))
+            self.queue.put(('work_result',(generation,source,work)))
+        except Exception as exc:
+            code = getattr(exc,'code',None) or 'parser_failed'
+            self.queue.put(('fetch_error',(generation,error_text(code))))
+
+    def _handle_work_done(self,source,work):
+        if work.content_type == 'unsupported':
+            self._handle_error('本期不支持小红书普通视频笔记。')
+            return
+        self.current_work = work
+        self.parsed_url = source
+        self.options_loaded = True
+        self.operation = None
+        self._stop_parse_loading()
+        self.empty_state.grid_remove()
+        self.preview_card.grid_remove()
+        if work.content_type=='gallery':
+            self.gallery_page.show_work(work,self._view_generation)
+        else:
+            self.douyin_video_page.show_work(work)
+        self._set_busy(False)
+        self.url_bar.show_start()
+        self._set_status('')
+
+    def download_gallery(self):
+        source_ref = work_ref = None
+        try:
+            work = self.current_work
+            if not self.options_loaded or not work or self._parsed_input != self.url_var.get():
+                raise ValueError('请先解析当前作品。')
+            selected = self.gallery_page.selection() if work.content_type=='gallery' else tuple(item.item_id for item in work.items)
+            gallery_components = (Component.STILL,Component.MOTION) if LIVE_PHOTO_ENABLED else (Component.STILL,)
+            components = gallery_components if work.content_type=='gallery' else self.douyin_video_page.components()
+            if not selected:raise ValueError('请先选择至少一张图片。')
+            if not components:raise ValueError('请至少选择视频或音频。')
+            audio_format=self.douyin_video_page.audio_policy.get() if Component.AUDIO in components else None
+            page=self.gallery_page if work.content_type=='gallery' else self.douyin_video_page
+            directory = Path(self.output_dir_var.get().strip() or app_dir()/'downloads').resolve()
+            signature = (self._view_generation,work.work_id,str(directory),selected,components,audio_format)
+            if self._last_submission and self._last_submission[0] == signature:
+                previous = self.task_store.task(self._last_submission[1])
+                if previous.state in {TaskState.QUEUED,TaskState.RUNNING,TaskState.VALIDATING}:
+                    self._page_task_id = previous.spec.task_id
+                    page.status_var.set('该任务已在队列中。')
+                    return
+            source_ref = self.vault.put(self.parsed_url)
+            work_ref = protect_work(self.vault,work)
+            spec = TaskSpec(work.platform,work.work_id,work.title or work.work_id,source_ref,str(directory),
+                            selected,components,audio_format=audio_format,work_ref=work_ref,auth_ref=work.platform.value)
+            self.task_service.submit(spec,output_plan(spec,work))
+            self._page_task_id = spec.task_id
+            self._last_submission = (signature,spec.task_id)
+            page.status_var.set('已加入队列，下载期间可以继续解析其他作品。')
+        except Exception as exc:
+            for reference in (source_ref,work_ref):
+                if reference:self.vault.delete(reference)
+            self._set_status(str(exc) if isinstance(exc,ValueError) else error_text(getattr(exc,'code',None)),error=True)
+
+    def _run_fetch(self, command: list[str], generation=None) -> None:
+        generation = self._view_generation if generation is None else generation
+        try:
+            command = list(command)
+            source_url = command.pop()
+            command += ["--batch-file","-"]
             process = subprocess.Popen(
                 command,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -1747,17 +2165,31 @@ class BiliDownloaderApp(tk.Tk):
                 creationflags=WINDOWS_CREATION_FLAGS,
             )
             self.current_process = process
-            stdout, stderr = process.communicate()
+            try:
+                stdout, stderr = process.communicate(input=source_url+"\n",timeout=60)
+            except subprocess.TimeoutExpired:
+                stop_process_tree(process)
+                process.communicate()
+                raise RuntimeError("解析超时，请重试。")
             self.current_process = None
             if process.returncode != 0:
-                raise RuntimeError(stderr.strip() or "yt-dlp 无法解析这个视频。")
-            self.queue.put(("fetch_done", json.loads(stdout)))
+                code = "needs_auth_or_permission" if any(marker in stderr.lower() for marker in
+                        ("cookie","403","401","login","sign in")) else "parser_failed"
+                raise RuntimeError(error_text(code))
+            self.queue.put(("fetch_result", (generation,json.loads(stdout))))
         except Exception as exc:
             self.current_process = None
-            self.queue.put(("error", exc))
+            message = str(exc) if isinstance(exc,RuntimeError) else error_text("parser_failed")
+            self.queue.put(("fetch_error", (generation,message)))
 
     def _handle_fetch_done(self, info: dict[str, Any]) -> None:
+        self.current_work = None
+        self.gallery_page.reset()
+        self.gallery_page.grid_remove()
+        self.douyin_video_page.grid_remove()
+        self.douyin_video_page.work=None
         item, _used_first_entry = extract_info_item(info)
+        self.parsed_info = item
         self.format_choices = parse_video_qualities(item)
         self.subtitle_choices = parse_subtitles(item)
         self.quality_combo.configure(values=[choice.label for choice in self.format_choices], state="normal")
@@ -1833,101 +2265,65 @@ class BiliDownloaderApp(tk.Tk):
             self._log(f"Thumbnail decode error: {exc}")
             self.thumbnail_label.configure(text="封面不可用", image="")
 
+    def _sync_bilibili_auth(self):
+        config = AuthConfig(mode="guest" if self.auth_mode_var.get() == "none" else self.auth_mode_var.get(),
+            browser=self.browser_var.get(), profile=self.browser_profile_var.get().strip(),
+            cookie_path=self.cookie_path_var.get().strip())
+        if config != self.auth_service.config(Platform.BILIBILI):
+            self.auth_service.configure(Platform.BILIBILI, config)
+
     def download(self) -> None:
         try:
-            url = normalize_url(self.url_var.get())
-            if not self.options_loaded or url != self.parsed_url:
+            url = self.parsed_url
+            if not self.options_loaded or not url or (self._parsed_input is not None and self._parsed_input != self.url_var.get()):
                 raise ValueError("请先解析当前视频链接。")
-            output_dir = Path(self.output_dir_var.get().strip() or app_dir() / "downloads")
-            output_dir.mkdir(parents=True, exist_ok=True)
+            output_dir = Path(self.output_dir_var.get().strip() or app_dir() / "downloads").resolve()
             self._ensure_download_tools()
-            assert self.aria2_path is not None
-            assert self.ffmpeg_path is not None
-
+            self._auth_args()
+            self._sync_bilibili_auth()
             mode = self.download_mode_var.get()
-            selected_format = self._selected_format() if mode == "video" else None
             audio_format = self.audio_format_var.get().lower()
-            command = build_download_command(
-                ytdlp_path=self.ytdlp_path,
-                aria2_path=self.aria2_path,
-                ffmpeg_path=self.ffmpeg_path,
-                auth_args=self._auth_args(),
-                output_dir=output_dir,
-                url=url,
-                mode=mode,
-                selected_format=selected_format,
-                audio_format=audio_format,
-                embed_subtitles=self.embed_subtitles_var.get(),
-                has_subtitles=len(self.subtitle_choices) > 1,
-            )
-            description = (
-                f"{audio_format.upper()} 音频"
-                if mode == "audio"
-                else f"{selected_format.label if selected_format else '最佳可用画质'} 视频"
-            )
+            if mode == "audio" and audio_format not in {"mp3", "wav"}:
+                raise ValueError("请选择 MP3 或 WAV。")
+            component = Component.AUDIO if mode == "audio" else Component.VIDEO
+            signature = (self._view_generation,url,str(output_dir),mode,
+                         self._selected_format().format_string if mode=="video" else audio_format,
+                         self.embed_subtitles_var.get() if mode=="video" else False)
+            if self._last_submission and self._last_submission[0] == signature:
+                previous = self.task_store.task(self._last_submission[1])
+                if previous.state in {TaskState.QUEUED,TaskState.RUNNING,TaskState.VALIDATING}:
+                    self._page_task_id = previous.spec.task_id
+                    self._set_status("该任务已在队列中，可在任务页查看。")
+                    return
+            work_id = str(self.parsed_info.get("id") or urlsplit(url).path.rstrip("/").split("/")[-1])
+            source_ref = self.vault.put(url)
+            spec = TaskSpec(Platform.BILIBILI, work_id, self.video_title_var.get(), source_ref,
+                str(output_dir), (work_id,), (component,),
+                format_selector=self._selected_format().format_string if mode == "video" else None,
+                audio_format=audio_format if mode == "audio" else None,
+                subtitle_language="all" if mode == "video" and self.embed_subtitles_var.get()
+                    and len(self.subtitle_choices)>1 else None,
+                auth_ref=Platform.BILIBILI.value)
+            output = OutputSpec(spec.task_id,work_id,component,1)
+            try:
+                self.task_service.submit(spec,(output,))
+            except Exception:
+                self.vault.delete(source_ref)
+                raise
+            self._page_task_id = spec.task_id
+            self._last_submission = (signature,spec.task_id)
+            self.active_download_mode = mode
+            self.active_output_dir = output_dir
+            self._show_download_progress()
+            self.download_state_title_var.set("已加入下载队列")
+            self.download_state_detail_var.set("下载期间可以继续解析其他作品")
+            self.download_percent_var.set("排队中")
+            self.cancel_button.configure(state="normal")
+            self._set_busy(False)
+            self.cancel_button.configure(state="normal")
+            self.task_page.refresh()
         except Exception as exc:
-            self._set_status(str(exc), error=True)
-            return
-
-        self.operation = "download"
-        self.active_download_mode = mode
-        self.cancel_requested = False
-        self.active_output_dir = output_dir
-        if mode == "audio":
-            self.download_state_title_var.set("正在提取音频")
-            self.download_state_detail_var.set(audio_format.upper())
-        else:
-            self.download_state_title_var.set("正在下载")
-            quality = selected_format.label if selected_format else "最佳可用画质"
-            self.download_state_detail_var.set(f"{quality} · MP4")
-        self._show_download_progress()
-        self._set_status(f"正在下载 {description}…")
-        self._log(f"Downloading to: {output_dir}")
-        self._set_busy(True, cancellable=True)
-        threading.Thread(target=self._run_download, args=(command,), daemon=True).start()
-
-    def _run_download(self, command: list[str]) -> None:
-        try:
-            creationflags = WINDOWS_CREATION_FLAGS
-            if os.name == "nt":
-                creationflags |= subprocess.CREATE_NEW_PROCESS_GROUP
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=creationflags,
-            )
-            self.current_process = process
-            if self.cancel_requested:
-                process.terminate()
-            assert process.stdout is not None
-            for line in process.stdout:
-                cleaned = line.rstrip()
-                if not cleaned:
-                    continue
-                self.queue.put(("log", cleaned))
-                match = re.search(r"\[download\]\s+(\d+(?:\.\d+)?)%", cleaned)
-                if match is None:
-                    match = re.search(r"\((\d+(?:\.\d+)?)%\)", cleaned)
-                if match:
-                    self.queue.put(("progress", float(match.group(1))))
-            return_code = process.wait()
-            self.current_process = None
-            if self.cancel_requested:
-                self.queue.put(("cancelled", None))
-            elif return_code != 0:
-                raise RuntimeError(f"下载失败，退出码 {return_code}。")
-            else:
-                self.queue.put(("download_done", "下载完成。"))
-        except Exception as exc:
-            self.current_process = None
-            if self.cancel_requested:
-                self.queue.put(("cancelled", None))
-            else:
-                self.queue.put(("error", exc))
+            self._set_status(str(exc),error=True)
 
     def _handle_progress(self, percent: float) -> None:
         self.progress.stop()
@@ -1978,34 +2374,33 @@ class BiliDownloaderApp(tk.Tk):
             self._set_status(message, error=True)
 
     def cancel_current(self) -> None:
-        if self.operation != "download":
-            return
-        self.cancel_requested = True
-        self.cancel_button.configure(state="disabled")
-        self.download_state_title_var.set("正在取消")
-        self.download_state_detail_var.set("正在停止当前下载任务…")
-        self._set_status("正在取消下载…")
-        process = self.current_process
-        if not process or process.poll() is not None:
-            return
-        try:
-            if os.name == "nt":
-                subprocess.run(
-                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=WINDOWS_CREATION_FLAGS,
-                    check=False,
-                )
-            else:
-                process.terminate()
-        except OSError:
-            process.terminate()
+        if self._page_task_id:
+            record = self.task_store.task(self._page_task_id)
+            if record.state in {TaskState.QUEUED, TaskState.RUNNING, TaskState.VALIDATING, TaskState.CANCEL_REQUESTED}:
+                self.task_service.cancel(self._page_task_id)
+                self.download_state_title_var.set("正在取消")
+                self.cancel_button.configure(state="disabled")
+
 
 
 if __name__ == "__main__":
+    if "--parser-worker" in sys.argv:
+        from bili.parser_worker import main as parser_worker_main
+        parser_worker_main()
+        raise SystemExit(0)
+    if "--native-worker" in sys.argv:
+        from bili.native_worker import main as native_worker_main
+        native_worker_main()
+        raise SystemExit(0)
+    instance = None
     try:
+        if os.name == "nt":
+            instance = SingleInstance(application_data_dir())
+            if not instance.owner:
+                instance.close()
+                raise SystemExit(0)
         app = BiliDownloaderApp()
+        app.instance_gate = instance
         if os.environ.get("BILIBILI_DOWNLOADER_SMOKE_TEST") == "1":
             app.withdraw()
             app.update_idletasks()
@@ -2015,3 +2410,6 @@ if __name__ == "__main__":
     except Exception:
         crash_log(traceback.format_exc())
         raise
+    finally:
+        if instance is not None:
+            instance.close()
