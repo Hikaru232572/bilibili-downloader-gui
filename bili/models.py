@@ -38,10 +38,10 @@ TRANSITIONS = {
                           TaskState.CANCEL_REQUESTED, TaskState.INTERRUPTED},
     TaskState.CANCEL_REQUESTED: {TaskState.CANCELLED, TaskState.INTERRUPTED},
     TaskState.SUCCEEDED: set(),
-    TaskState.PARTIAL: {TaskState.QUEUED},
-    TaskState.FAILED: {TaskState.QUEUED},
+    TaskState.PARTIAL: {TaskState.QUEUED, TaskState.CANCELLED},
+    TaskState.FAILED: {TaskState.QUEUED, TaskState.CANCELLED},
     TaskState.CANCELLED: {TaskState.QUEUED},
-    TaskState.INTERRUPTED: {TaskState.QUEUED},
+    TaskState.INTERRUPTED: {TaskState.QUEUED, TaskState.CANCELLED},
 }
 
 
@@ -182,3 +182,4 @@ class TaskRecord:
     attempt_id: str | None
     error_code: str | None = None
     message: str | None = None
+    completed_at: float | None = None

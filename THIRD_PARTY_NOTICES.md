@@ -1,6 +1,6 @@
 # 第三方来源、许可与对应源码
 
-Bili v1.1.0-rc.1 按根 LICENSE 的 GPL-3.0 组合发行，保留原项目 MIT 声明；各第三方组件仍遵循自己的许可。版权与原声明在 licenses/，Python/原生组件版本和工具哈希在 licenses/dependency-manifest.json。
+Bili v1.1.0 按根 LICENSE 的 GPL-3.0 组合发行，保留原项目 MIT 声明；各第三方组件仍遵循自己的许可。版权与原声明在 licenses/，Python/原生组件版本和工具哈希在 licenses/dependency-manifest.json。
 
 | 组件 | 固定来源 | 许可/说明 |
 |---|---|---|
@@ -14,10 +14,10 @@ Bili v1.1.0-rc.1 按根 LICENSE 的 GPL-3.0 组合发行，保留原项目 MIT �
 | Python/Tcl/Tk | Python 3.12.10 / Tcl/Tk 8.6 | 原声明与第三方条款保留 |
 | 其他 Python/native 组件 | dependency-manifest.json | 原声明与对应 sdist/源码附件；包含 PyInstaller 的 bootloader 例外声明 |
 
-本软件使用 FFmpeg 的 LGPL 构建。对应源码和构建信息在同一 Release 的 Bili-v1.1.0-rc.1-third-party-sources.zip，可与二进制一起免费下载：
-https://github.com/Hikaru232572/bilibili-downloader-gui/releases/tag/v1.1.0-rc.1
+本软件使用 FFmpeg 的 LGPL 构建。对应源码和构建信息在同一 Release 的 Bili-v1.1.0-third-party-sources.zip，可与二进制一起免费下载：
+https://github.com/Hikaru232572/bilibili-downloader-gui/releases/tag/v1.1.0
 
-应用和解析子集的完整对应源码在本仓库 v1.1.0-rc.1 标签，以及 Release 的 Bili-v1.1.0-rc.1-source.zip。必要编译/打包步骤在 BUILDING.md 和脚本中。固定工具包另附 Release，用于复现相同工具字节。
+应用和解析子集的完整对应源码在本仓库 v1.1.0 标签，以及 Release 的 Bili-v1.1.0-source.zip。必要编译/打包步骤在 BUILDING.md 和脚本中。固定工具包另附 Release，用于复现相同工具字节。
 
 第三方源码附件包括固定 FFmpeg 核心、构建脚本、依赖源码/精确仓库修订、aria2、yt-dlp、Python、Python sdist 和 HEIF 原生库。FFmpeg 部分源码下载服务器使用镜像，但均按原构建修订定位；原仓库位置保留在 FFMPEG_DEPENDENCY_REFS.json。FFmpeg 配置与库名未混淆，不限制替换库、修改或为调试修改而逆向工程。
 

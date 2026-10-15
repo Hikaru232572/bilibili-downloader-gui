@@ -57,7 +57,8 @@ class TaskUiTests(unittest.TestCase):
         current=self.app.task_store.task(a.task_id)
         self.app._handle_task_event({'operation':'progress','task_id':a.task_id,
                                     'attempt_id':current.attempt_id,'percent':42})
-        self.assertEqual(self.app.task_page.tree.item(a.task_id,'values')[1],'下载 42%')
+        self.app.task_page.refresh()
+        self.assertIn('当前下载 42%',self.app.task_page.cards[a.task_id].meta_var.get())
         self.app.output_dir_var.set(str(Path(self.directory.name)/'second'))
         self.app.audio_mode_card.invoke()
         self.app.download()
@@ -66,7 +67,7 @@ class TaskUiTests(unittest.TestCase):
         self.assertEqual(tasks[0].spec,a)
         self.assertNotEqual(tasks[0].spec.output_dir,tasks[1].spec.output_dir)
         self.app.show_task_page()
-        self.assertEqual(len(self.app.task_page.tree.get_children()),2)
+        self.assertEqual(len(self.app.task_page.cards),2)
         self.release.set()
         self.pump(lambda:len(self.started)==2)
         self.assertEqual([s.work_id for s in self.started],['A','B'])

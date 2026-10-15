@@ -118,3 +118,54 @@ class TaskServiceTests(unittest.TestCase):
         self.assertEqual(self.store.task(pending.task_id).state,TaskState.INTERRUPTED)
         self.assertTrue(self.service._closed)
         self.service.close()
+
+    def test_consecutive_successes_write_history_without_ui_consuming_events(self):
+        async def execute(context):
+            return TaskState.SUCCEEDED
+        self.service = TaskService(self.store,execute)
+        specs = [self.spec(str(i)) for i in range(5)]
+        for spec in specs:
+            self.service.submit(spec)
+        self.wait(lambda:len(self.store.completed_tasks())==5)
+        self.assertEqual({r.spec.task_id for r in self.store.completed_tasks()},
+                         {s.task_id for s in specs})
+        self.assertTrue(all(r.state==TaskState.SUCCEEDED for r in self.store.tasks()))
+
+    def test_cancel_arriving_at_success_commit_does_not_write_false_history(self):
+        async def execute(context):
+            return TaskState.SUCCEEDED
+        original = self.store.transition
+        def cancel_before_commit(task_id,state,**kwargs):
+            if state==TaskState.SUCCEEDED:
+                self.store.request_cancel(task_id)
+            return original(task_id,state,**kwargs)
+        self.store.transition = cancel_before_commit
+        self.service = TaskService(self.store,execute)
+        spec = self.spec('race')
+        self.service.submit(spec)
+        self.wait(lambda:self.store.task(spec.task_id).state==TaskState.CANCELLED)
+        self.assertEqual(self.store.completed_tasks(),())
+        self.assertEqual(len(self.store.queue_tasks()),1)
+
+    def test_cancel_during_exception_commit_does_not_stop_the_worker_or_next_task(self):
+        release = threading.Event()
+        async def execute(context):
+            if context.record.spec.work_id=='failing':
+                while not release.is_set():
+                    await asyncio.sleep(.01)
+                raise RuntimeError('backend failure')
+            return TaskState.SUCCEEDED
+        original = self.store.transition
+        def cancel_before_failure_commit(task_id,state,**kwargs):
+            if state==TaskState.FAILED:
+                self.store.request_cancel(task_id)
+            return original(task_id,state,**kwargs)
+        self.store.transition = cancel_before_failure_commit
+        self.service = TaskService(self.store,execute)
+        failing, next_task = self.spec('failing'), self.spec('next')
+        self.service.submit(failing)
+        self.service.submit(next_task)
+        release.set()
+        self.wait(lambda:self.store.task(next_task.task_id).state==TaskState.SUCCEEDED)
+        self.assertEqual(self.store.task(failing.task_id).state,TaskState.CANCELLED)
+        self.assertEqual([r.spec.task_id for r in self.store.completed_tasks()],[next_task.task_id])

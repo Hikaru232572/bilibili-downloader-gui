@@ -74,6 +74,7 @@ Copy-Item -LiteralPath (Join-Path $Root "THIRD_PARTY_NOTICES.md") -Destination (
 Copy-Item -LiteralPath (Join-Path $Root "licenses") -Destination (Join-Path $Root "dist\BilibiliDownloader\licenses") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $Root "VERSION") -Destination (Join-Path $Root "dist\BilibiliDownloader\VERSION") -Force
 Copy-Item -LiteralPath (Join-Path $Root "CHANGELOG.md") -Destination (Join-Path $Root "dist\BilibiliDownloader\CHANGELOG.md") -Force
+Copy-Item -LiteralPath (Join-Path $Root "docs") -Destination (Join-Path $Root "dist\BilibiliDownloader\docs") -Recurse -Force
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "dist\BilibiliDownloader\downloads") | Out-Null
 
 Write-Host "Portable build created under: $(Join-Path $Root 'dist\BilibiliDownloader')"

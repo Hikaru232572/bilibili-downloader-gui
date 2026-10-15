@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -15,6 +16,10 @@ from .files import OutputFiles, name_stem
 from .models import Component, Platform, TaskState
 from .validation import async_validate_media
 from .messages import ERRORS,error_text
+
+
+DOWNLOAD_PROGRESS_TEMPLATE = ('download:BILI_PROGRESS:{"downloaded_bytes":%(progress.downloaded_bytes)j,'
+                              '"total_bytes":%(progress.total_bytes)j,"speed":%(progress.speed)j}')
 
 
 @dataclass(frozen=True)
@@ -29,6 +34,25 @@ class DownloadError(Exception):
     def __init__(self, code):
         self.code = code
         super().__init__(code)
+
+
+def progress_metrics(text):
+    """Only numeric measurements leave the CLI reader, never raw CLI metadata."""
+    if not text.startswith('BILI_PROGRESS:'):
+        return None
+    try:
+        data = json.loads(text.removeprefix('BILI_PROGRESS:'))
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    def number(key):
+        value = data.get(key)
+        return value if isinstance(value, (int,float)) and not isinstance(value,bool) and math.isfinite(value) and value >= 0 else None
+    size, total = number('downloaded_bytes'), number('total_bytes')
+    # Estimates are deliberately not displayed as known totals.
+    return dict(bytes=size,total=total,speed=number('speed'),
+                percent=min(size/total*100,100) if size is not None and total else None)
 
 
 def auth_arguments(config: AuthConfig) -> list[str]:
@@ -152,7 +176,8 @@ class BilibiliExecutor:
         # Avoid the source URL in process command lines. yt-dlp accepts batch
         # input over its private stdin; the URL is kept in the protected vault.
         command.remove(url)
-        command += ['--no-overwrites','--batch-file','-']
+        command += ['--no-overwrites','--batch-file','-',
+                    '--progress-template',DOWNLOAD_PROGRESS_TEMPLATE]
         if hasattr(self,'test_sections'):
             command += ['--download-sections',self.test_sections,'--force-keyframes-at-cuts']
         context.emit('phase',phase='downloading')
@@ -188,11 +213,14 @@ class BilibiliExecutor:
                     failure_code = 'disk_full'
                 elif 'permission denied' in text.lower():
                     failure_code = 'output_permission_denied'
+                metrics = progress_metrics(text.strip())
                 match = re.search(r'\[download\]\s+(\d+(?:\.\d+)?)%',text)
                 if not match:
                     match = re.search(r'\((\d+(?:\.\d+)?)%\)',text)
-                if match:
-                    context.emit('progress',percent=min(float(match[1]),99.0))
+                if metrics:
+                    context.report_progress(**metrics,output_id=output['id'])
+                elif match:
+                    context.report_progress(percent=float(match[1]),output_id=output['id'])
                 if any(marker in text for marker in ('[Merger]','[ExtractAudio]','[VideoRemuxer]','[EmbedSubtitle]')):
                     context.emit('phase',phase='processing')
             code = await process.wait()

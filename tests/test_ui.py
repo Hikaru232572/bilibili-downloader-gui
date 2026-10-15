@@ -320,8 +320,8 @@ class AppUiTests(unittest.TestCase):
         self.assertEqual(self.app.main_page.winfo_manager(), "pack")
         self.assertEqual(self.app.title(), "Bili")
         self.assertEqual(self.app.auth_mode_var.get(), saved_auth_mode)
-        reset_state = self.open_settings()
-        self.assertEqual(reset_state["auth_var"].get(), saved_auth_mode)
+        retained_state = self.open_settings()
+        self.assertEqual(retained_state["auth_var"].get(), "none")
 
     def test_native_titlebar_palette_and_fallback_are_safe(self) -> None:
         self.assertEqual(
@@ -377,8 +377,8 @@ class AppUiTests(unittest.TestCase):
             state["profile_var"].set("Profile 1")
             state["save_button"].invoke()
             self.app.update_idletasks()
-            self.assertEqual(self.app.settings_page.winfo_manager(), "")
-            self.assertEqual(self.app.main_page.winfo_manager(), "pack")
+            self.assertEqual(self.app.settings_page.winfo_manager(), "pack")
+            self.assertEqual(self.app.main_page.winfo_manager(), "")
 
             loaded = json.loads(settings_path.read_text(encoding="utf-8"))
             self.assertEqual(loaded["output_dir"], str(output_path))
@@ -395,8 +395,8 @@ class AppUiTests(unittest.TestCase):
             reopened_state["auth_control"].invoke("none")
             reopened_state["cancel_button"].invoke()
             self.app.update_idletasks()
-            self.assertEqual(self.app.settings_page.winfo_manager(), "")
-            self.assertEqual(self.app.main_page.winfo_manager(), "pack")
+            self.assertEqual(self.app.settings_page.winfo_manager(), "pack")
+            self.assertEqual(self.app.main_page.winfo_manager(), "")
             self.assertEqual(self.app.auth_mode_var.get(), "cookie_file")
 
             reset_state = self.open_settings()
@@ -466,7 +466,7 @@ class AppUiTests(unittest.TestCase):
 
         showinfo.assert_not_called()
         self.assertEqual(self.app.download_result_title_var.get(), "下载完成")
-        self.assertIn("D:\\Videos", self.app.download_result_detail_var.get())
+        self.assertEqual("文件已保存，可打开目录查看。", self.app.download_result_detail_var.get())
         self.assertEqual(self.app.download_result_content.winfo_manager(), "grid")
         self.assertEqual(self.app.open_folder_button.winfo_manager(), "grid")
         self.assertEqual(self.app.download_button.winfo_manager(), "")

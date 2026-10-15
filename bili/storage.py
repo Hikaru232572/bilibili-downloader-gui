@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future
+from contextlib import closing
 import json
 from pathlib import Path
 from queue import Queue
@@ -13,7 +14,9 @@ from uuid import uuid4
 from .models import ACTIVE_STATES, TRANSITIONS, OutputSpec, TaskRecord, TaskSpec, TaskState
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+HISTORY_RETENTION = 7 * 24 * 60 * 60
+SUCCESS_LINGER = 10
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS batches (
  id TEXT PRIMARY KEY, state TEXT NOT NULL, notification_claimed INTEGER NOT NULL DEFAULT 0,
@@ -24,7 +27,8 @@ CREATE TABLE IF NOT EXISTS tasks (
  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
  id TEXT NOT NULL UNIQUE, submission_key TEXT NOT NULL UNIQUE,
  spec TEXT NOT NULL, state TEXT NOT NULL, batch_id TEXT NOT NULL REFERENCES batches(id),
- attempt_id TEXT, error_code TEXT, message TEXT, created REAL NOT NULL, updated REAL NOT NULL
+ attempt_id TEXT, error_code TEXT, message TEXT, created REAL NOT NULL, updated REAL NOT NULL,
+ queue_hidden INTEGER NOT NULL DEFAULT 0, completed_at REAL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_task ON tasks((1))
  WHERE state IN ('running','validating','cancel_requested');
@@ -40,6 +44,10 @@ CREATE TABLE IF NOT EXISTS attempts (
  ended REAL, state TEXT NOT NULL, backend_revision TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS completion_history (
+ task_id TEXT PRIMARY KEY REFERENCES tasks(id), completed_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS history_by_completion ON completion_history(completed_at);
 '''
 
 
@@ -53,7 +61,11 @@ class TaskStore:
         ready = Future()
         self._thread = threading.Thread(target=self._owner, args=(ready,), name='bili-db')
         self._thread.start()
-        ready.result(timeout=15)
+        try:
+            ready.result(timeout=15)
+        except Exception:
+            self._thread.join(timeout=10)
+            raise
 
     def _owner(self, ready):
         connection = None
@@ -64,15 +76,36 @@ class TaskStore:
             connection.execute('PRAGMA journal_mode=WAL')
             connection.execute('PRAGMA synchronous=FULL')
             version = connection.execute('PRAGMA user_version').fetchone()[0]
-            if version not in (0, SCHEMA_VERSION):
+            if version not in (0, 1, SCHEMA_VERSION):
                 raise ValueError('Unsupported task database version')
             if version == 0:
                 connection.executescript(SCHEMA)
                 connection.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
                 connection.commit()
+            elif version == 1:
+                # A consistent SQLite backup includes WAL content. Migration and
+                # its version marker commit together; a retry cannot duplicate history.
+                with closing(sqlite3.connect(str(self.path) + '.v1.bak')) as backup:
+                    connection.backup(backup)
+                with connection:
+                    connection.execute('BEGIN IMMEDIATE')
+                    connection.execute('ALTER TABLE tasks ADD COLUMN queue_hidden INTEGER NOT NULL DEFAULT 0')
+                    connection.execute('ALTER TABLE tasks ADD COLUMN completed_at REAL')
+                    connection.execute('CREATE TABLE completion_history (task_id TEXT PRIMARY KEY '
+                                       'REFERENCES tasks(id), completed_at REAL NOT NULL)')
+                    connection.execute('CREATE INDEX history_by_completion ON completion_history(completed_at)')
+                    connection.execute("UPDATE tasks SET completed_at=COALESCE("
+                        "(SELECT MAX(ended) FROM attempts WHERE task_id=tasks.id AND state='succeeded'),"
+                        "updated) WHERE state='succeeded'")
+                    connection.execute("INSERT INTO completion_history SELECT id,completed_at FROM tasks "
+                                       "WHERE state='succeeded' AND completed_at> ?",
+                                       (time.time() - HISTORY_RETENTION,))
+                    connection.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
             # All old nonterminal work needs explicit user resumption. New jobs
             # submitted after startup cannot silently release this backlog.
             with connection:
+                connection.execute("UPDATE tasks SET queue_hidden=1 WHERE state='succeeded'")
+                self._prune_history(connection, time.time())
                 connection.execute("UPDATE tasks SET state='interrupted',updated=? "
                                    "WHERE state IN ('queued','running','validating','cancel_requested')",
                                    (time.time(),))
@@ -131,7 +164,7 @@ class TaskStore:
     def _record(row):
         return TaskRecord(TaskSpec.from_record(json.loads(row['spec'])),
                           TaskState(row['state']), row['sequence'], row['batch_id'],
-                          row['attempt_id'], row['error_code'], row['message'])
+                          row['attempt_id'], row['error_code'], row['message'], row['completed_at'])
 
     def submit(self, spec: TaskSpec, outputs: tuple[OutputSpec, ...] = ()) -> TaskRecord:
         def operation(c):
@@ -158,6 +191,59 @@ class TaskStore:
     def tasks(self) -> tuple[TaskRecord, ...]:
         return self._call(lambda c: tuple(self._record(r) for r in c.execute('SELECT * FROM tasks ORDER BY sequence')))
 
+    @staticmethod
+    def _prune_history(c, now):
+        return c.execute('DELETE FROM completion_history WHERE completed_at<=?',
+                         (now - HISTORY_RETENTION,)).rowcount
+
+    def prune_history(self):
+        return self._call(lambda c: self._prune_history(c, time.time()))
+
+    def page_snapshot(self, *, history=False):
+        """Read cards and their outputs consistently, without a query per card.
+
+        Execution identities stay durable after clearing presentation history.
+        This prevents stale events/submission retries from recreating records.
+        None of these presentation operations accesses the output filesystem.
+        """
+        def operation(c):
+            now = time.time()
+            self._prune_history(c, now)
+            if history:
+                source = 'tasks t JOIN completion_history h ON h.task_id=t.id'
+                where, args, order = '1=1', (), 'h.completed_at DESC,t.sequence DESC'
+            else:
+                source = 'tasks t'
+                where = "t.queue_hidden=0 AND (t.state<>'succeeded' OR t.completed_at>?)"
+                args, order = (now - SUCCESS_LINGER,), 't.sequence'
+            records = tuple(self._record(r) for r in c.execute(
+                f'SELECT t.* FROM {source} WHERE {where} ORDER BY {order}', args))
+            outputs = {r.spec.task_id: [] for r in records}
+            for row in c.execute(f'SELECT o.* FROM {source} JOIN outputs o ON o.task_id=t.id '
+                                 f'WHERE {where} ORDER BY o.original_index,o.component', args):
+                outputs[row['task_id']].append(dict(row))
+            return tuple((r, tuple(outputs[r.spec.task_id])) for r in records)
+        return self._call(operation)
+
+    def queue_tasks(self):
+        return tuple(record for record, _ in self.page_snapshot())
+
+    def completed_tasks(self):
+        return tuple(record for record, _ in self.page_snapshot(history=True))
+
+    def clear_history(self):
+        return self._call(lambda c: c.execute('DELETE FROM completion_history').rowcount)
+
+    def remove_task(self, task_id):
+        def operation(c):
+            row = c.execute('SELECT state FROM tasks WHERE id=?', (task_id,)).fetchone()
+            if not row:
+                raise KeyError(task_id)
+            if TaskState(row['state']) in ACTIVE_STATES or row['state'] == TaskState.QUEUED:
+                raise ValueError('Stop a task before removing it')
+            return c.execute('UPDATE tasks SET queue_hidden=1 WHERE id=?', (task_id,)).rowcount
+        return self._call(operation)
+
     def task(self, task_id: str) -> TaskRecord:
         def operation(c):
             row = c.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
@@ -183,7 +269,8 @@ class TaskStore:
         return self._call(operation)
 
     def transition(self, task_id: str, state: TaskState, *, attempt_id: str | None = None,
-                   error_code: str | None = None, message: str | None = None) -> bool:
+                   error_code: str | None = None, message: str | None = None,
+                   resolve_cancel: bool = False) -> bool:
         def operation(c):
             row = c.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
             if not row:
@@ -191,32 +278,42 @@ class TaskStore:
             if attempt_id is not None and row['attempt_id'] != attempt_id:
                 return False  # A late callback from a previous attempt.
             previous = TaskState(row['state'])
-            if state == previous:
+            # Decide cancellation and terminal state on the owning DB thread.
+            # A cancel can arrive after the service last inspected this row.
+            target = (TaskState.CANCELLED if resolve_cancel and previous==TaskState.CANCEL_REQUESTED
+                      and state in {TaskState.SUCCEEDED,TaskState.PARTIAL,TaskState.FAILED} else state)
+            if target == previous:
                 return False
-            if state not in TRANSITIONS[previous]:
-                raise ValueError(f'Invalid transition {previous} -> {state}')
-            if state == TaskState.QUEUED:
+            if target not in TRANSITIONS[previous]:
+                raise ValueError(f'Invalid transition {previous} -> {target}')
+            if target == TaskState.QUEUED:
                 raise ValueError('Use retry() to reopen a terminal task')
-            if state == TaskState.SUCCEEDED and c.execute(
+            if target == TaskState.SUCCEEDED and c.execute(
                 "SELECT 1 FROM outputs WHERE task_id=? AND state<>'succeeded' LIMIT 1", (task_id,)).fetchone():
                 raise ValueError('Task still has unvalidated or missing outputs')
             now = time.time()
             c.execute('UPDATE tasks SET state=?,error_code=?,message=?,updated=? WHERE id=?',
-                      (state, error_code, message, now, task_id))
-            if state not in ACTIVE_STATES and row['attempt_id']:
+                      (target, error_code, message, now, task_id))
+            if target == TaskState.SUCCEEDED:
+                c.execute('UPDATE tasks SET completed_at=? WHERE id=?', (now, task_id))
+                c.execute('INSERT INTO completion_history(task_id,completed_at) VALUES(?,?)', (task_id, now))
+            if target not in ACTIVE_STATES and row['attempt_id']:
                 c.execute('UPDATE attempts SET state=?,ended=? WHERE id=?',
-                          (state, now, row['attempt_id']))
+                          (target, now, row['attempt_id']))
             self._finish_batch(c, row['batch_id'])
             return True
         return self._call(operation)
 
     def request_cancel(self, task_id: str) -> TaskState:
         def operation(c):
-            row = c.execute('SELECT state,batch_id,attempt_id FROM tasks WHERE id=?', (task_id,)).fetchone()
+            row = c.execute('SELECT state,batch_id,attempt_id,queue_hidden FROM tasks WHERE id=?', (task_id,)).fetchone()
             if not row:
                 raise KeyError(task_id)
             previous = TaskState(row['state'])
-            state = (TaskState.CANCELLED if previous == TaskState.QUEUED else
+            if row['queue_hidden']:
+                return previous
+            state = (TaskState.CANCELLED if previous in {TaskState.QUEUED,TaskState.FAILED,
+                     TaskState.PARTIAL,TaskState.INTERRUPTED} else
                      TaskState.CANCEL_REQUESTED if previous in ACTIVE_STATES else previous)
             if previous != state:
                 c.execute('UPDATE tasks SET state=?,updated=? WHERE id=?',(state,time.time(),task_id))
@@ -241,7 +338,7 @@ class TaskStore:
     def retry(self, task_id: str) -> TaskRecord:
         def operation(c):
             row = c.execute('SELECT * FROM tasks WHERE id=?', (task_id,)).fetchone()
-            if not row or TaskState.QUEUED not in TRANSITIONS[TaskState(row['state'])]:
+            if not row or row['queue_hidden'] or TaskState.QUEUED not in TRANSITIONS[TaskState(row['state'])]:
                 raise ValueError('Task cannot be retried')
             # Retry joins a currently open batch. After a finished batch, create
             # a new one. Existing successes retain their output identity/path.

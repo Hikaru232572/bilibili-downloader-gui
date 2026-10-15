@@ -9,7 +9,7 @@ import ui_kit as ctk
 
 from .gallery import preferred_candidates
 from .features import LIVE_PHOTO_ENABLED
-from .messages import error_text
+from .messages import error_text, task_error_text
 from .models import Candidate, Component, TaskState
 from .preview import PreviewHost
 from .task_page import LABELS
@@ -190,6 +190,7 @@ class GalleryPage(ctk.CTkFrame):
 
     def scroll(self,event):
         self.canvas.yview_scroll(-int(event.delta/120),'units')
+        return 'break'
 
     def select(self,value):
         for variable in self.selected.values():variable.set(value)
@@ -260,5 +261,9 @@ class GalleryPage(ctk.CTkFrame):
 
     def task_state(self,record,progress=None):
         percent = (progress or {}).get('percent')
-        detail = f' · {percent:.0f}%' if percent is not None and record.state == TaskState.RUNNING else ''
-        self.status_var.set(LABELS[record.state]+detail+' · '+(record.message or '可在任务页查看文件与操作。'))
+        phase = (progress or {}).get('phase')
+        detail = (f' · 当前下载 {percent:.0f}%' if percent is not None and record.state == TaskState.RUNNING
+                  and phase not in {'processing','validating'} else '')
+        message = (task_error_text(record.error_code) if record.state in {TaskState.PARTIAL,TaskState.FAILED}
+                   else '可在任务页查看进度与操作。')
+        self.status_var.set(LABELS[record.state]+detail+' · '+message)

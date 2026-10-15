@@ -6,6 +6,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from queue import Queue
 import threading
+import time
 from typing import Awaitable, Callable
 
 from .models import ACTIVE_STATES, OutputSpec, TaskRecord, TaskSpec, TaskState
@@ -20,6 +21,27 @@ class TaskContext:
     result_message: str | None = None
     result_code: str | None = None
     retained_output: dict | None = None
+    _progress_sample: tuple | None = field(default=None, init=False)
+    _measured_speed: float | None = field(default=None, init=False)
+
+    def report_progress(self, *, percent=None, bytes=None, total=None, speed=None, output_id=None):
+        """Report measured current-transfer progress; never invent task totals."""
+        now = time.monotonic()
+        sample = self._progress_sample
+        if bytes is not None:
+            if sample and sample[0] == output_id and bytes >= sample[2]:
+                elapsed = now - sample[1]
+                if speed is None and elapsed >= .2:
+                    self._measured_speed = (bytes - sample[2]) / elapsed
+                if speed is None:
+                    speed = self._measured_speed
+                if elapsed >= .2:
+                    self._progress_sample = (output_id, now, bytes)
+            else:
+                self._progress_sample = (output_id, now, bytes)
+                self._measured_speed = None
+        self.emit('progress', percent=percent, bytes=bytes, total=total, speed=speed,
+                  output_id=output_id, measured_at=now)
 
     def emit(self, operation: str, **payload):
         if operation == 'warning':
@@ -86,7 +108,8 @@ class TaskService:
                         self.store.transition(record.spec.task_id,TaskState.VALIDATING,
                                               attempt_id=record.attempt_id)
                     self.store.transition(record.spec.task_id,result,attempt_id=record.attempt_id,
-                                          error_code=context.result_code,message=context.result_message)
+                                          error_code=context.result_code,message=context.result_message,
+                                          resolve_cancel=True)
                 except asyncio.CancelledError:
                     terminal = TaskState.INTERRUPTED if self._closing else TaskState.CANCELLED
                     current = self.store.task(record.spec.task_id).state
@@ -102,7 +125,7 @@ class TaskService:
                     # Only controlled codes/class names enter durable state.
                     code = getattr(exc,'code',None) or type(exc).__name__
                     self.store.transition(record.spec.task_id,state,attempt_id=record.attempt_id,
-                                          error_code=code)
+                                          error_code=code,resolve_cancel=True)
                 finally:
                     context.dispose()
                     context.emit('task_finished',state=self.store.task(record.spec.task_id).state)
@@ -137,6 +160,7 @@ class TaskService:
 
     def cancel(self, task_id):
         state = self.store.request_cancel(task_id)
+        self.events.put(dict(operation='task_changed',task_id=task_id))
         if state == TaskState.CANCELLED:
             self._signal()
         elif state == TaskState.CANCEL_REQUESTED:

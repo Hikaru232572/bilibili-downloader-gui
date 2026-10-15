@@ -1,7 +1,7 @@
 {
-  "version": "1.1.0-rc.1",
-  "archive": "Bili-v1.1.0-rc.1-toolchain-windows-x64.zip",
-  "url": "https://github.com/Hikaru232572/bilibili-downloader-gui/releases/download/v1.1.0-rc.1/Bili-v1.1.0-rc.1-toolchain-windows-x64.zip",
+  "version": "1.1.0",
+  "archive": "Bili-v1.1.0-toolchain-windows-x64.zip",
+  "url": "https://github.com/Hikaru232572/bilibili-downloader-gui/releases/download/v1.1.0/Bili-v1.1.0-toolchain-windows-x64.zip",
   "sha256": "538400d976fcfc3b4c7a8b5b8b0174d5748236c28e9de4626faa8174c415a86d",
   "files": [
     {

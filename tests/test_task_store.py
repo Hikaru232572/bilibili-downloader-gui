@@ -4,9 +4,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from bili.models import Component, OutputSpec, Platform, TaskSpec, TaskState
-from bili.storage import TaskStore
+from bili.storage import HISTORY_RETENTION, SUCCESS_LINGER, TaskStore
 
 
 class TaskStoreTests(unittest.TestCase):
@@ -124,6 +125,131 @@ class TaskStoreTests(unittest.TestCase):
         data = (self.root/'tasks.sqlite3').read_bytes()
         self.assertNotIn(b'https://', data)
         self.assertNotIn(b'Cookie', data)
+
+    def test_success_is_immediately_in_history_and_lingers_for_exactly_ten_seconds(self):
+        with patch('bili.storage.time.time', return_value=1000000):
+            spec = self.spec()
+            self.store.submit(spec)
+            self.finish(self.store.claim_next())
+            self.assertEqual([r.spec.task_id for r in self.store.completed_tasks()], [spec.task_id])
+            self.assertEqual([r.spec.task_id for r in self.store.queue_tasks()], [spec.task_id])
+        with patch('bili.storage.time.time', return_value=1000000+SUCCESS_LINGER-.01):
+            self.assertEqual(len(self.store.queue_tasks()), 1)
+        with patch('bili.storage.time.time', return_value=1000000+SUCCESS_LINGER):
+            self.assertEqual(self.store.queue_tasks(), ())
+            self.assertEqual(len(self.store.completed_tasks()), 1)
+
+    def test_success_and_history_survive_restart_without_returning_to_queue(self):
+        spec = self.spec()
+        self.store.submit(spec)
+        self.finish(self.store.claim_next())
+        completed = self.store.completed_tasks()[0].completed_at
+        self.store.close()
+        self.store = TaskStore(self.root/'tasks.sqlite3')
+        self.assertEqual(self.store.queue_tasks(), ())
+        self.assertEqual(self.store.completed_tasks()[0].completed_at, completed)
+        self.assertIsNone(self.store.claim_next())
+        self.store.submit(spec)
+        self.assertIsNone(self.store.claim_next())
+        self.assertEqual(len(self.store.completed_tasks()), 1)
+
+    def test_history_expires_from_completion_time_at_seven_days(self):
+        file = self.root/'preserved.mp4'
+        file.write_bytes(b'user-file-after-history-expiry')
+        with patch('bili.storage.time.time', return_value=1000000):
+            spec = self.spec()
+            output = OutputSpec(spec.task_id,'item-1',Component.VIDEO,1)
+            self.store.submit(spec,(output,))
+            record = self.store.claim_next()
+            self.store.update_output(output.output_id,state='succeeded',path=str(file),
+                evidence={'size':file.stat().st_size},attempt_id=record.attempt_id)
+            self.finish(record)
+        with patch('bili.storage.time.time', return_value=1000000+HISTORY_RETENTION-.01):
+            self.assertEqual(len(self.store.completed_tasks()), 1)
+        with patch('bili.storage.time.time', return_value=1000000+HISTORY_RETENTION):
+            self.assertEqual(self.store.prune_history(), 1)
+            self.assertEqual(self.store.completed_tasks(), ())
+            self.assertEqual(self.store.queue_tasks(), ())
+            self.assertEqual(file.read_bytes(),b'user-file-after-history-expiry')
+
+    def test_clear_and_expiry_preserve_files_and_do_not_recreate_history(self):
+        spec = self.spec()
+        file = self.root/'download.mp4'
+        file.write_bytes(b'actual-user-file')
+        output = OutputSpec(spec.task_id,'item-1',Component.VIDEO,1)
+        self.store.submit(spec,(output,))
+        task = self.store.claim_next()
+        self.store.update_output(output.output_id,state='succeeded',path=str(file),
+            evidence={'size':file.stat().st_size},attempt_id=task.attempt_id)
+        self.finish(task)
+        self.assertEqual(self.store.clear_history(), 1)
+        self.assertFalse(self.store.transition(spec.task_id,TaskState.SUCCEEDED,attempt_id=task.attempt_id))
+        self.store.close()
+        self.store = TaskStore(self.root/'tasks.sqlite3')
+        self.store.submit(spec,(output,))
+        self.assertEqual(self.store.completed_tasks(), ())
+        self.assertIsNone(self.store.claim_next())
+        self.assertEqual(file.read_bytes(), b'actual-user-file')
+        self.assertEqual(self.store.outputs(spec.task_id)[0]['path'], str(file))
+
+    def test_partial_and_failure_stay_in_queue_retry_records_only_final_success(self):
+        spec = self.spec()
+        self.store.submit(spec)
+        first = self.store.claim_next()
+        self.finish(first,TaskState.PARTIAL)
+        self.assertEqual(self.store.completed_tasks(), ())
+        self.assertEqual(self.store.queue_tasks()[0].state, TaskState.PARTIAL)
+        self.store.retry(spec.task_id)
+        second = self.store.claim_next()
+        self.finish(second,TaskState.FAILED)
+        self.assertEqual(self.store.queue_tasks()[0].state, TaskState.FAILED)
+        self.store.retry(spec.task_id)
+        third = self.store.claim_next()
+        self.assertFalse(self.store.transition(spec.task_id,TaskState.SUCCEEDED,attempt_id=first.attempt_id))
+        self.finish(third)
+        self.assertEqual(len(self.store.completed_tasks()), 1)
+
+    def test_success_validation_failure_cannot_create_history(self):
+        spec = self.spec()
+        self.store.submit(spec,(OutputSpec(spec.task_id,'item-1',Component.VIDEO,1),))
+        task = self.store.claim_next()
+        self.store.transition(spec.task_id,TaskState.VALIDATING,attempt_id=task.attempt_id)
+        with self.assertRaises(ValueError):
+            self.store.transition(spec.task_id,TaskState.SUCCEEDED,attempt_id=task.attempt_id)
+        self.assertEqual(self.store.completed_tasks(), ())
+        self.assertEqual(self.store.task(spec.task_id).state, TaskState.VALIDATING)
+
+    def test_cancel_failed_work_then_resume_or_remove_without_deleting_files(self):
+        file = self.root/'saved-image.webp'
+        file.write_bytes(b'keep-this-file')
+        spec = self.spec()
+        self.store.submit(spec)
+        with self.assertRaises(ValueError):
+            self.store.remove_task(spec.task_id)
+        self.finish(self.store.claim_next(),TaskState.FAILED)
+        self.assertEqual(self.store.request_cancel(spec.task_id),TaskState.CANCELLED)
+        self.assertEqual(len(self.store.queue_tasks()),1)
+        self.store.retry(spec.task_id)
+        self.store.request_cancel(spec.task_id)
+        self.store.remove_task(spec.task_id)
+        self.assertEqual(self.store.queue_tasks(),())
+        self.assertEqual(self.store.completed_tasks(),())
+        with self.assertRaises(ValueError):
+            self.store.retry(spec.task_id)
+        self.store.close()
+        self.store = TaskStore(self.root/'tasks.sqlite3')
+        self.assertEqual(self.store.queue_tasks(),())
+        self.assertEqual(file.read_bytes(),b'keep-this-file')
+
+    def test_clearing_history_does_not_change_pending_work_or_later_completions(self):
+        a,b = self.spec('A'),self.spec('B')
+        self.store.submit(a)
+        self.store.submit(b)
+        self.finish(self.store.claim_next())
+        self.store.clear_history()
+        self.assertEqual(self.store.task(b.task_id).state,TaskState.QUEUED)
+        self.finish(self.store.claim_next())
+        self.assertEqual([r.spec.task_id for r in self.store.completed_tasks()],[b.task_id])
 
 
 if __name__ == '__main__':

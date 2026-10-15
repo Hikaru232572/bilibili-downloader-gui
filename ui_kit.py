@@ -265,6 +265,7 @@ class RoundedButton(tk.Canvas):
         self._hovering = False
         self._pixel_width = width
         self._pixel_height = height
+        kwargs.setdefault("takefocus", 1)
         super().__init__(
             master,
             width=width,
@@ -279,6 +280,10 @@ class RoundedButton(tk.Canvas):
         self.bind("<Enter>", self._on_enter, add="+")
         self.bind("<Leave>", self._on_leave, add="+")
         self.bind("<ButtonRelease-1>", self._on_click, add="+")
+        self.bind("<Return>", lambda _event: self.invoke(), add="+")
+        self.bind("<space>", lambda _event: self.invoke(), add="+")
+        self.bind("<FocusIn>", self._redraw, add="+")
+        self.bind("<FocusOut>", self._redraw, add="+")
         self.after_idle(self._redraw)
 
     def _redraw(self, _event: Any = None) -> None:
@@ -309,6 +314,9 @@ class RoundedButton(tk.Canvas):
                 font=self._font,
                 tags="button",
             )
+        if self.focus_get() is self:
+            self.create_rectangle(4, 4, canvas_width - 4, canvas_height - 4,
+                                  outline=text_color, dash=(2, 2), tags="button")
 
     def _draw_gear(self, center_x: float, center_y: float, color: str) -> None:
         for index in range(8):
@@ -849,7 +857,7 @@ class ModeSelectionCard(tk.Canvas):
             )
         self.create_text(
             52,
-            23,
+            23 if self._subtitle else canvas_height / 2,
             text=self._title,
             fill="#201F1C",
             font=("Segoe UI Semibold", 11),

@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 from io import BytesIO
 from dataclasses import dataclass
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from typing import Any
 
 from bili.auth import AuthConfig, AuthService
@@ -29,9 +29,10 @@ from bili.secrets import SecretVault
 from bili.storage import TaskStore
 from bili.tasks import TaskService
 from bili.task_page import TaskPage
+from bili.task_summary import summarize_tasks
 from bili.close_dialog import CloseDialog
 from bili.windows import NotificationService, SingleInstance, TrayService, application_data_dir
-from bili.messages import error_text
+from bili.messages import error_text, task_error_text
 from bili.gallery import GalleryExecutor, output_plan, protect_work
 from bili.features import LIVE_PHOTO_ENABLED
 from bili.douyin_video import DouyinVideoExecutor
@@ -54,7 +55,7 @@ except ImportError:
 
 
 APP_NAME = "Bilibili Downloader"
-APP_VERSION = "1.1.0-rc.1"
+APP_VERSION = "1.1.0"
 WINDOW_TITLE = "Bili"
 APP_ICON_FILE_NAME = "app.ico"
 WINDOWS_CREATION_FLAGS = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -569,15 +570,19 @@ class BiliDownloaderApp(tk.Tk):
         self._parse_loading_step = 0
         self._preview_animation: dict[str, Any] | None = None
         self._preview_fade_snapshot: list[tuple[tk.Widget, str, str]] = []
+        self._settings_draft_ready = False
 
         self._configure_style()
         self._build_ui()
         bundle = Path(getattr(sys,'_MEIPASS',str(app_dir())))
-        self.gallery_page = GalleryPage(self.main_page,self.media_preview,self.download_gallery,
+        self.gallery_page = GalleryPage(self.result_content,self.media_preview,self.download_gallery,
                                         self._view_generation,bundle/'bin/vlc')
-        self.douyin_video_page=DouyinVideoPage(self.main_page,self.download_gallery)
+        self.douyin_video_page=DouyinVideoPage(self.result_content,self.download_gallery)
         self.task_page = TaskPage(self, self.task_service, self.task_store,
-                                  self.show_main_page, self._open_task_folder,self._task_progress)
+                                  self.show_main_page, self._open_task_folder,self._task_progress,
+                                  on_refresh=self._refresh_task_summary)
+        self.task_settings_button = self._settings_icon(self.task_page.header)
+        self.task_settings_button.pack(side=tk.RIGHT)
         apply_native_window_style(self)
         self.url_var.trace_add("write", self._reset_options_on_url_change)
         self._set_busy(False)
@@ -681,7 +686,26 @@ class BiliDownloaderApp(tk.Tk):
         ctk.set_appearance_mode("light")
         self.configure(bg="#F6F5F1")
 
+    def _settings_icon(self, master):
+        return ctk.RoundedButton(master, icon="gear", width=36, height=36,
+            corner_radius=18, fg_color="#EFEEEA", hover_color="#E3E1DB",
+            text_color="#292825", bg_color="#F6F5F1", command=self.show_settings_page)
+
     def _build_ui(self) -> None:
+        self.task_footer = ctk.CTkFrame(self, fg_color="#F6F5F1")
+        self.task_footer.columnconfigure(1, weight=1)
+        tk.Frame(self.task_footer, height=1, bg="#D8D5CE").grid(
+            row=0, column=0, columnspan=2, sticky=tk.EW, pady=(0, 7))
+        self.task_summary_var = tk.StringVar()
+        self.task_summary_progress = ctk.WarmProgressBar(self.task_footer, width=96, height=5,
+            track_color="#E1DFD9", progress_color="#292825", bg_color="#F6F5F1")
+        self.task_summary_progress.grid(row=1, column=0, sticky=tk.W, padx=(0, 14))
+        self.task_summary_button = tk.Button(self.task_footer, textvariable=self.task_summary_var,
+            command=self.show_task_page, font=("Segoe UI", 10), fg="#706D67", bg="#F6F5F1",
+            activeforeground="#292825", activebackground="#F6F5F1", relief="flat", bd=0,
+            anchor="e", cursor="hand2", highlightthickness=1, highlightbackground="#F6F5F1",
+            highlightcolor="#706D67", padx=2, pady=3)
+        self.task_summary_button.grid(row=1, column=1, sticky=tk.EW)
         self.main_page = ctk.CTkFrame(self, fg_color="#F6F5F1")
         self.main_page.pack(fill=tk.BOTH, expand=True, padx=42, pady=34)
         outer = self.main_page
@@ -747,6 +771,21 @@ class BiliDownloaderApp(tk.Tk):
             wraplength=700,
         )
         self.status_label.grid(row=2, column=0, sticky=tk.EW, pady=(10, 0))
+
+        outer.rowconfigure(4, weight=1)
+        self.result_canvas = tk.Canvas(outer, bg="#F6F5F1", highlightthickness=0, bd=0,
+                                       height=390, yscrollincrement=24)
+        self.result_canvas.grid(row=4, column=0, sticky="nsew")
+        self.result_scroll = ttk.Scrollbar(outer, orient="vertical", command=self.result_canvas.yview)
+        self.result_canvas.configure(yscrollcommand=self.result_scroll.set)
+        self.result_content = ctk.CTkFrame(self.result_canvas, fg_color="#F6F5F1")
+        self.result_content.columnconfigure(0, weight=1)
+        self._result_window = self.result_canvas.create_window(0, 0, window=self.result_content, anchor="nw")
+        self.result_content.bind("<Configure>", self._fit_result_view)
+        self.result_canvas.bind("<Configure>", self._fit_result_view)
+        self.bind("<MouseWheel>", self._scroll_result_view, add="+")
+        self.bind("<FocusIn>", self._reveal_result_focus, add="+")
+        outer = self.result_content
 
         self.empty_state = ctk.CTkFrame(outer, fg_color="transparent")
         self.empty_state.grid(row=4, column=0, sticky=tk.EW, pady=(40, 0))
@@ -830,22 +869,24 @@ class BiliDownloaderApp(tk.Tk):
         mode_row.columnconfigure(1, weight=1)
         self.video_mode_card = ctk.ModeSelectionCard(
             mode_row,
-            title="下载视频",
-            subtitle="选择画质并保存 MP4",
+            title="视频",
+            subtitle="",
             icon="play",
             value="video",
             variable=self.download_mode_var,
             command=self._update_download_mode,
+            height=48,
         )
         self.video_mode_card.grid(row=0, column=0, sticky=tk.EW, padx=(0, 6))
         self.audio_mode_card = ctk.ModeSelectionCard(
             mode_row,
-            title="提取音频",
-            subtitle="MP3 / WAV",
+            title="音频",
+            subtitle="",
             icon="music",
             value="audio",
             variable=self.download_mode_var,
             command=self._update_download_mode,
+            height=48,
         )
         self.audio_mode_card.grid(row=0, column=1, sticky=tk.EW, padx=(6, 0))
 
@@ -932,12 +973,27 @@ class BiliDownloaderApp(tk.Tk):
         )
         self.subtitle_check.grid(row=0, column=0, sticky=tk.W)
 
+        self.download_actions = download_actions = ctk.CTkFrame(self.preview_card, fg_color="transparent")
+        download_actions.grid(row=5, column=0, sticky=tk.EW, pady=(12, 0))
+        download_actions.columnconfigure(0, weight=1)
+        self.destination_name_var = tk.StringVar()
+        def sync_destination(*_args):
+            path = Path(self.output_dir_var.get().strip() or app_dir() / "downloads")
+            name = path.name or str(path)
+            self.destination_name_var.set(name if len(name) <= 28 else name[:25] + "…")
+        self.output_dir_var.trace_add("write", sync_destination)
+        sync_destination()
+        self.destination_button = tk.Button(download_actions, textvariable=self.destination_name_var,
+            command=self.show_settings_page, font=("Segoe UI", 10), fg="#706D67", bg="#F6F5F1",
+            activeforeground="#292825", activebackground="#F6F5F1", relief="flat", bd=0,
+            cursor="hand2", anchor="w", padx=0)
+        self.destination_button.grid(row=0, column=0, sticky=tk.W)
         self.download_button = ctk.RoundedButton(
-            self.preview_card,
+            download_actions,
             text="下载视频",
-            width=230,
-            height=50,
-            corner_radius=25,
+            width=132,
+            height=42,
+            corner_radius=21,
             fg_color="#292825",
             hover_color="#403E39",
             text_color="#FFFFFF",
@@ -945,7 +1001,7 @@ class BiliDownloaderApp(tk.Tk):
             font=("Segoe UI", 11, "bold"),
             command=self.download,
         )
-        self.download_button.grid(row=5, column=0, pady=(10, 0))
+        self.download_button.grid(row=0, column=1, sticky=tk.E)
 
         self.progress_frame = ctk.CTkFrame(self.preview_card, fg_color="transparent")
         self.progress_frame.grid(row=5, column=0, sticky=tk.EW, pady=(8, 0))
@@ -1053,6 +1109,40 @@ class BiliDownloaderApp(tk.Tk):
         self.status_label.grid_remove()
         self._build_settings_page()
 
+    def _fit_result_view(self, _event=None):
+        canvas = self.result_canvas
+        canvas.itemconfigure(self._result_window, width=canvas.winfo_width())
+        height = self.result_content.winfo_reqheight()
+        canvas.configure(scrollregion=(0, 0, canvas.winfo_width(), height))
+        if height > canvas.winfo_height() + 1:
+            self.result_scroll.grid(row=4, column=1, sticky=tk.NS, padx=(8, 0))
+        else:
+            self.result_scroll.grid_remove()
+            canvas.yview_moveto(0)
+
+    def _is_result_widget(self, widget):
+        while widget is not None:
+            if widget in (self.result_content, self.result_canvas):
+                return True
+            widget = getattr(widget, 'master', None)
+        return False
+
+    def _scroll_result_view(self, event):
+        if self._is_result_widget(event.widget) and self.result_scroll.winfo_manager():
+            self.result_canvas.yview_scroll(-int(event.delta / 120) or (-1 if event.delta > 0 else 1), 'units')
+            return 'break'
+
+    def _reveal_result_focus(self, event):
+        if not self._is_result_widget(event.widget):
+            return
+        widget, canvas = event.widget, self.result_canvas
+        top = widget.winfo_rooty() - canvas.winfo_rooty()
+        bottom = top + widget.winfo_height()
+        offset = top if top < 0 else bottom - canvas.winfo_height() if bottom > canvas.winfo_height() else 0
+        if offset:
+            height = max(1, self.result_content.winfo_reqheight())
+            canvas.yview_moveto(canvas.yview()[0] + offset / height)
+
     def _settings_path(self) -> Path:
         return self.data_dir / SETTINGS_FILE_NAME
 
@@ -1094,6 +1184,8 @@ class BiliDownloaderApp(tk.Tk):
         cookie_name_var = tk.StringVar()
         cookie_detail_var = tk.StringVar()
         settings_error_var = tk.StringVar()
+        dirty_var = tk.StringVar()
+        loading = [False]
         close_var = tk.StringVar(value=self.task_store.get_preference("close_behavior","ask"))
         platform_var = tk.StringVar(value=Platform.BILIBILI.value)
         drafts = {platform:self.auth_service.config(platform) for platform in Platform}
@@ -1106,16 +1198,24 @@ class BiliDownloaderApp(tk.Tk):
             auth_var.set('none' if config.mode=='guest' else config.mode)
             browser_var.set(config.browser);profile_var.set(config.profile);cookie_var.set(config.cookie_path)
         def switch_platform(*_args):
+            if loading[0]:
+                return
             drafts[active_platform[0]] = capture_auth()
             active_platform[0] = Platform(platform_var.get())
-            load_auth(drafts[active_platform[0]])
+            loading[0] = True
+            try:
+                load_auth(drafts[active_platform[0]])
+            finally:
+                loading[0] = False
+            self._refresh_settings_dirty()
         platform_var.trace_add('write',switch_platform)
 
-        content = ctk.CTkFrame(self.settings_page, fg_color="#F6F5F1")
-        content.pack(fill=tk.BOTH, expand=True, padx=92, pady=20)
-        content.columnconfigure(0, weight=1)
+        shell = ctk.CTkFrame(self.settings_page, fg_color="#F6F5F1")
+        shell.pack(fill=tk.BOTH, expand=True, padx=42, pady=28)
+        shell.columnconfigure(0, weight=1)
+        shell.rowconfigure(1, weight=1)
 
-        header = ctk.CTkFrame(content, fg_color="transparent")
+        header = ctk.CTkFrame(shell, fg_color="transparent")
         header.grid(row=0, column=0, sticky=tk.EW)
         header.columnconfigure(1, weight=1)
         self.settings_back_button = ctk.RoundedButton(
@@ -1146,6 +1246,30 @@ class BiliDownloaderApp(tk.Tk):
             text_color="#706D67",
             anchor="w",
         ).grid(row=1, column=1, sticky=tk.W, pady=(1, 0))
+        self.settings_tasks_button = ctk.RoundedButton(header, text="任务", width=70, height=36,
+            corner_radius=18, fg_color="#EFEEEA", hover_color="#E3E1DB", text_color="#292825",
+            bg_color="#F6F5F1", command=self.show_task_page)
+        self.settings_tasks_button.grid(row=0, column=2, rowspan=2, sticky=tk.E)
+
+        settings_canvas = tk.Canvas(shell, bg="#F6F5F1", highlightthickness=0, bd=0,
+                                    height=420, yscrollincrement=24)
+        settings_canvas.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
+        settings_scroll = ttk.Scrollbar(shell, orient="vertical", command=settings_canvas.yview)
+        settings_canvas.configure(yscrollcommand=settings_scroll.set)
+        content = ctk.CTkFrame(settings_canvas, fg_color="#F6F5F1")
+        content.columnconfigure(0, weight=1)
+        content_window = settings_canvas.create_window(0, 0, window=content, anchor="nw")
+        def fit_settings(_event=None):
+            settings_canvas.itemconfigure(content_window, width=settings_canvas.winfo_width())
+            height = content.winfo_reqheight()
+            settings_canvas.configure(scrollregion=(0, 0, settings_canvas.winfo_width(), height))
+            if height > settings_canvas.winfo_height() + 1:
+                settings_scroll.grid(row=1, column=1, sticky=tk.NS, padx=(8, 0), pady=(4, 0))
+            else:
+                settings_scroll.grid_remove()
+                settings_canvas.yview_moveto(0)
+        content.bind("<Configure>", fit_settings)
+        settings_canvas.bind("<Configure>", fit_settings)
 
         def sync_output_display(*_args: object) -> None:
             raw = output_var.get().strip()
@@ -1358,8 +1482,8 @@ class BiliDownloaderApp(tk.Tk):
         settings_doodles = ctk.PaperDoodles(help_row, variant="settings", bg="#F6F5F1")
         settings_doodles.grid(row=0, column=3, rowspan=2, sticky=tk.E)
 
-        footer = ctk.CTkFrame(content, fg_color="transparent")
-        footer.grid(row=4, column=0, sticky=tk.EW, pady=(8, 0))
+        footer = ctk.CTkFrame(shell, fg_color="transparent")
+        footer.grid(row=2, column=0, sticky=tk.EW, pady=(10, 0))
         footer.columnconfigure(0, weight=1)
         ctk.CTkLabel(
             footer,
@@ -1369,10 +1493,12 @@ class BiliDownloaderApp(tk.Tk):
             anchor="w",
             wraplength=330,
         ).grid(row=0, column=0, sticky=tk.W)
+        ctk.CTkLabel(footer, textvariable=dirty_var, text_color="#706D67",
+            font=("Segoe UI", 9), anchor="w").grid(row=1, column=0, sticky=tk.W)
         actions = ctk.CTkFrame(footer, fg_color="transparent")
-        actions.grid(row=0, column=1, sticky=tk.E)
-        close_row = ctk.CTkFrame(footer,fg_color="transparent")
-        close_row.grid(row=1,column=0,columnspan=2,sticky=tk.EW,pady=(12,0))
+        actions.grid(row=0, column=1, rowspan=2, sticky=tk.E)
+        close_row = ctk.CTkFrame(content,fg_color="transparent")
+        close_row.grid(row=4,column=0,sticky=tk.EW,pady=(14,4))
         ctk.CTkLabel(close_row,text="关闭窗口",font=("Segoe UI",10)).pack(side=tk.LEFT,padx=(0,10))
         close_control = ctk.SegmentedControl(close_row,
             options=[("每次询问","ask"),("直接退出","exit"),("后台托管","tray")],
@@ -1417,15 +1543,17 @@ class BiliDownloaderApp(tk.Tk):
                 self.format_choices = []
                 self.subtitle_choices = []
                 self.preview_card.grid_remove()
+                self.empty_state.grid()
                 self.download_button.configure(state="disabled")
                 self._set_status("Cookie 设置已更改，请重新解析视频。")
             else:
                 self._set_status("设置已保存。")
-            self.show_main_page()
+            self._reset_settings_drafts()
+            dirty_var.set("已保存")
 
         cancel_button = ctk.RoundedButton(
             actions,
-            text="取消",
+            text="撤销",
             width=84,
             height=38,
             corner_radius=19,
@@ -1434,7 +1562,7 @@ class BiliDownloaderApp(tk.Tk):
             text_color="#292825",
             bg_color="#F6F5F1",
             font=("Segoe UI", 10),
-            command=self.show_main_page,
+            command=self._reset_settings_drafts,
         )
         cancel_button.grid(row=0, column=0)
         save_button = ctk.RoundedButton(
@@ -1453,6 +1581,8 @@ class BiliDownloaderApp(tk.Tk):
         save_button.grid(row=0, column=1, padx=(10, 0))
 
         self.settings_state = {
+            'loading': loading, 'capture_auth': capture_auth, 'dirty_var': dirty_var,
+            'canvas': settings_canvas, 'scroll': settings_scroll,
             'platform_var':platform_var,'drafts':drafts,'active_platform':active_platform,
             'platform_control':platform_control,'clear_button':clear_button,
             "output_var": output_var,
@@ -1478,19 +1608,59 @@ class BiliDownloaderApp(tk.Tk):
             "close_var": close_var,
             "close_control": close_control,
         }
+        for variable in (output_var, auth_var, browser_var, profile_var, cookie_var, close_var):
+            variable.trace_add("write", self._refresh_settings_dirty)
+        def scroll_settings(event):
+            if settings_scroll.winfo_manager():
+                settings_canvas.yview_scroll(-int(event.delta / 120) or (-1 if event.delta > 0 else 1), "units")
+            return "break"
+        def bind_scroll(widget):
+            widget.bind("<MouseWheel>", scroll_settings, add="+")
+            for child in widget.winfo_children():
+                bind_scroll(child)
+        bind_scroll(content)
+        settings_canvas.bind("<MouseWheel>", scroll_settings)
 
     def _reset_settings_drafts(self) -> None:
         state = self.settings_state
-        state['drafts'].update({platform:self.auth_service.config(platform) for platform in Platform})
-        state['active_platform'][0] = Platform.BILIBILI
-        state['platform_var'].set('bilibili')
-        state["output_var"].set(self.output_dir_var.get())
-        state["auth_var"].set(self.auth_mode_var.get())
-        state["browser_var"].set(self.browser_var.get())
-        state["profile_var"].set(self.browser_profile_var.get())
-        state["cookie_var"].set(self.cookie_path_var.get())
-        state["error_var"].set("")
-        state["close_var"].set(self.task_store.get_preference("close_behavior","ask"))
+        selected = state['platform_var'].get() if self._settings_draft_ready else 'bilibili'
+        state['loading'][0] = True
+        try:
+            state['drafts'].update({platform:self.auth_service.config(platform) for platform in Platform})
+            state['drafts'][Platform.BILIBILI] = AuthConfig(
+                'guest' if self.auth_mode_var.get() == 'none' else self.auth_mode_var.get(),
+                self.browser_var.get(), self.browser_profile_var.get(), self.cookie_path_var.get())
+            state['active_platform'][0] = platform = Platform(selected)
+            state['platform_var'].set(selected)
+            config = state['drafts'][platform]
+            state["output_var"].set(self.output_dir_var.get())
+            state["auth_var"].set('none' if config.mode == 'guest' else config.mode)
+            state["browser_var"].set(config.browser)
+            state["profile_var"].set(config.profile)
+            state["cookie_var"].set(config.cookie_path)
+            state["close_var"].set(self.task_store.get_preference("close_behavior","ask"))
+            state["error_var"].set("")
+        finally:
+            state['loading'][0] = False
+        self._settings_draft_ready = True
+        self._settings_baseline = self._settings_draft_values()
+        self._refresh_settings_dirty()
+
+    def _settings_draft_values(self):
+        state = self.settings_state
+        accounts = dict(state['drafts'])
+        accounts[state['active_platform'][0]] = state['capture_auth']()
+        return (state['output_var'].get().strip() or str(app_dir() / 'downloads'),
+                state['close_var'].get(), tuple((platform, accounts[platform]) for platform in Platform))
+
+    def _refresh_settings_dirty(self, *_args):
+        if not self._settings_draft_ready or self.settings_state['loading'][0]:
+            return
+        state = self.settings_state
+        dirty = self._settings_draft_values() != self._settings_baseline
+        state['dirty_var'].set('未保存' if dirty else '')
+        for name in ('save_button', 'cancel_button'):
+            state[name].configure(state='normal' if dirty else 'disabled')
 
     @staticmethod
     def _smoothstep(value: float) -> float:
@@ -1580,7 +1750,8 @@ class BiliDownloaderApp(tk.Tk):
     def show_settings_page(self) -> None:
         if self.settings_page.winfo_manager():
             return
-        self._reset_settings_drafts()
+        if not self._settings_draft_ready:
+            self._reset_settings_drafts()
         self.main_page.pack_forget()
         self.task_page.pack_forget()
         self.settings_page.pack(fill=tk.BOTH, expand=True)
@@ -1599,6 +1770,28 @@ class BiliDownloaderApp(tk.Tk):
         self.settings_page.pack_forget()
         self.task_page.refresh()
         self.task_page.pack(fill=tk.BOTH, expand=True)
+
+    def _refresh_task_summary(self):
+        summary = summarize_tasks(self.task_store.tasks(), self._task_progress)
+        self.task_summary_var.set(summary.text + '  ›' if summary.visible else '')
+        for button in (self.tasks_button, self.settings_tasks_button):
+            button.configure(text=f'任务 {summary.count}' if summary.count else '任务',
+                             width=84 if summary.count else 70)
+        if not summary.visible:
+            self.task_footer.pack_forget()
+            return
+        if summary.fraction is None:
+            self.task_summary_progress.grid_remove()
+        else:
+            self.task_summary_progress.grid()
+            self.task_summary_progress.set(summary.fraction)
+        if not self.task_footer.winfo_manager():
+            pages = (self.main_page, self.settings_page, getattr(self, 'task_page', None))
+            current = next((page for page in pages if page is not None and page.winfo_manager() == 'pack'), None)
+            options = dict(side=tk.BOTTOM, fill=tk.X, padx=42, pady=(0, 14))
+            if current is not None:
+                options['before'] = current
+            self.task_footer.pack(**options)
 
     def _open_task_folder(self, directory):
         path = Path(directory)
@@ -1634,6 +1827,7 @@ class BiliDownloaderApp(tk.Tk):
         if self._parsed_input == self.url_var.get() or normalize_url(self.url_var.get()) == self.parsed_url:
             return
         self._cancel_preview_result_animation()
+        self.result_canvas.yview_moveto(0)
         self._view_generation += 1
         self._page_task_id = None
         self.parsed_info = {}
@@ -1710,6 +1904,7 @@ class BiliDownloaderApp(tk.Tk):
 
     def _show_download_progress(self) -> None:
         self.download_state = "downloading"
+        self.download_actions.grid_remove()
         self.download_button.grid_remove()
         self.download_result_content.grid_remove()
         self.download_progress_content.grid()
@@ -1720,6 +1915,7 @@ class BiliDownloaderApp(tk.Tk):
 
     def _show_download_result(self, kind: str, title: str, detail: str) -> None:
         self.download_state = "completed" if kind == "success" else kind
+        self.download_actions.grid_remove()
         self.download_button.grid_remove()
         self.download_progress_content.grid_remove()
         self.download_result_content.grid()
@@ -1741,6 +1937,7 @@ class BiliDownloaderApp(tk.Tk):
             self.progress_frame.grid_remove()
             self.download_progress_content.grid_remove()
             self.download_result_content.grid_remove()
+            self.download_actions.grid()
             self.download_button.grid()
             self.download_button.configure(state="normal")
 
@@ -1977,7 +2174,7 @@ class BiliDownloaderApp(tk.Tk):
 
     def _handle_task_event(self, event):
         if event["operation"] == "batch_finished":
-            self.task_page.refresh()
+            self.task_page.request_refresh()
             self.notifications.show(event)
             return
         task_id = event.get("task_id")
@@ -1992,10 +2189,14 @@ class BiliDownloaderApp(tk.Tk):
         elif operation in {"progress","phase"}:
             progress = self._task_progress.setdefault(task_id,{"attempt_id":record.attempt_id})
             if operation=="progress":
-                progress["percent"] = event["percent"]
+                progress.update({key:event.get(key) for key in
+                    ("percent","bytes","total","speed","output_id","measured_at")})
+                progress["phase"] = "downloading"
             else:
                 progress["phase"] = event["phase"]
-        self.task_page.refresh()
+                if event["phase"] == "downloading":
+                    progress.update(percent=None,bytes=None,total=None,speed=None)
+        self.task_page.request_refresh()
         if task_id != self._page_task_id:
             return
         if self.current_work:
@@ -2014,7 +2215,12 @@ class BiliDownloaderApp(tk.Tk):
             self.progress.configure(mode="indeterminate")
             self.progress.start(12)
         elif operation == "progress":
-            self._handle_progress(event["percent"])
+            if event.get("percent") is not None:
+                self._handle_progress(event["percent"])
+            else:
+                self.download_percent_var.set("正在下载")
+                self.progress.configure(mode="indeterminate")
+                self.progress.start(12)
         elif operation == "phase":
             self.download_state_title_var.set({"downloading":"正在下载","processing":"正在处理",
                                                "validating":"正在校验文件"}[event["phase"]])
@@ -2022,15 +2228,15 @@ class BiliDownloaderApp(tk.Tk):
                 self.download_percent_var.set("处理中" if event["phase"] == "processing" else "校验中")
                 self.progress.configure(mode="indeterminate")
                 self.progress.start(12)
-        elif operation == "task_finished":
+        elif operation in {"task_finished","task_changed"}:
             if record.state == TaskState.SUCCEEDED:
                 self._handle_download_done("下载完成。")
             elif record.state == TaskState.CANCELLED:
                 self._handle_cancelled()
             elif record.state == TaskState.PARTIAL:
-                self._show_download_result("error", "部分成功", record.message or "已保存可用文件，请在任务页查看未完成部分。")
-            else:
-                self._show_download_result("error", "下载失败", error_text(record.error_code))
+                self._show_download_result("error", "部分成功", task_error_text(record.error_code))
+            elif record.state in {TaskState.FAILED,TaskState.INTERRUPTED}:
+                self._show_download_result("error", "下载失败", task_error_text(record.error_code))
             self._set_busy(self.operation == "analysis")
 
     def fetch_options(self) -> None:
@@ -2338,8 +2544,7 @@ class BiliDownloaderApp(tk.Tk):
         self.progress.configure(mode="determinate")
         self.progress.set(1)
         self._set_busy(False)
-        output_dir = self.active_output_dir or Path(self.output_dir_var.get().strip() or app_dir() / "downloads")
-        self._show_download_result("success", "下载完成", f"文件已保存到 {output_dir}")
+        self._show_download_result("success", "下载完成", "文件已保存，可打开目录查看。")
         self._set_status("")
 
     def _handle_cancelled(self) -> None:

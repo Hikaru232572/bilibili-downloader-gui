@@ -182,9 +182,8 @@ class GalleryExecutor:
                         self.auth.check(credentials)
                         async def progress(size, length):
                             self.auth.check(credentials)
-                            fraction = min(size/length, 1) if length else 0
-                            context.emit('progress', percent=min((completed+fraction)/total*100, 99),
-                                         output_id=row['id'], bytes=size, total=length)
+                            context.report_progress(percent=min(size/length*100, 100) if length else None,
+                                                    output_id=row['id'], bytes=size, total=length)
                         result = await self.transfer.download(candidate, spec.platform, temporary,
                             progress=progress, cookies=credentials.cookies)
                         self.auth.check(credentials)

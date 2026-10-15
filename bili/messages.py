@@ -40,3 +40,8 @@ ERRORS={
 
 def error_text(code):
     return ERRORS.get(code,'任务未完成，可在任务页检查并重试。'+('（'+str(code)+'）' if code else ''))
+
+
+def task_error_text(code):
+    """Ordinary download feedback must not expose internal exception codes."""
+    return ERRORS.get(code,'任务未完成，请检查网络或设置后重试。')

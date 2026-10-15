@@ -1,4 +1,4 @@
-# 构建 v1.1.0-rc.1
+# 构建 v1.1.0
 
 需要 Windows x64、Python 3.12.10 和 PowerShell。依赖固定在 requirements-lock.txt，上游来源与改动见 vendor/UPSTREAM.json。
 

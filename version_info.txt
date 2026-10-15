@@ -1,12 +1,12 @@
 VSVersionInfo(
-  ffi=FixedFileInfo(filevers=(1,1,0,1), prodvers=(1,1,0,1), mask=0x3f,
-    flags=0x2, OS=0x40004, fileType=0x1, subtype=0x0, date=(0,0)),
+  ffi=FixedFileInfo(filevers=(1,1,0,0), prodvers=(1,1,0,0), mask=0x3f,
+    flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0,0)),
   kids=[StringFileInfo([StringTable('080404b0',[
     StringStruct('CompanyName','Hikaru232572'),
     StringStruct('FileDescription','Bili 多平台下载工具'),
-    StringStruct('FileVersion','1.1.0-rc.1'),
+    StringStruct('FileVersion','1.1.0'),
     StringStruct('InternalName','BilibiliDownloader'),
     StringStruct('OriginalFilename','BilibiliDownloader.exe'),
     StringStruct('ProductName','Bili'),
-    StringStruct('ProductVersion','1.1.0-rc.1')])]),
+    StringStruct('ProductVersion','1.1.0')])]),
     VarFileInfo([VarStruct('Translation',[2052,1200])])])

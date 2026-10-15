@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from app import BiliDownloaderApp
 from bili.auth import AuthConfig
-from bili.models import Candidate,Component,MediaItem,Platform,Work
+from bili.models import Candidate,Component,MediaItem,Platform,Work,TaskSpec,OutputSpec
 from tests.test_gallery import work
 
 
@@ -46,6 +46,25 @@ class GalleryUiTests(unittest.TestCase):
         self.assertEqual(outputs[0].original_index,3)
         self.assertIsNotNone(spec.work_ref)
         self.assertEqual(spec.components,(Component.STILL,))
+
+    def test_gallery_wheel_does_not_scroll_the_outer_result_view(self):
+        self.app.task_service.close()
+        spec = TaskSpec(Platform.BILIBILI, 'fixture', '测试任务', 'protected',
+                        self.directory.name, ('item',), (Component.VIDEO,))
+        self.app.task_store.submit(spec, (OutputSpec(spec.task_id, 'item', Component.VIDEO, 1),))
+        self.app.task_page.refresh()
+        self.app.geometry('700x620')
+        self.app.deiconify()
+        self.parse_gallery(work(count=20))
+        self.app.update()
+        outer = self.app.result_canvas
+        inner = self.app.gallery_page.canvas
+        self.assertTrue(self.app.result_scroll.winfo_manager())
+        outer_before, inner_before = outer.yview(), inner.yview()
+        inner.event_generate('<MouseWheel>', delta=-120)
+        self.app.update()
+        self.assertNotEqual(inner.yview(), inner_before)
+        self.assertEqual(outer.yview(), outer_before)
 
     def test_deferred_live_photo_has_only_still_outputs_and_no_motion_request(self):
         self.parse_gallery(work(live=True))
